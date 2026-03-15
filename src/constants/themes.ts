@@ -1,0 +1,28 @@
+export const MAX_PARTICLES = 40000;
+
+export const THEMES = {
+    combine: {
+        name: 'Combine',
+        glow: 0x4ade80,
+        accent: 0x0077ff,
+        bgGradient: 'rgba(0, 119, 255, 0.15)',
+        palette: [0x00ffff, 0x00aaff, 0x0077ff, 0x44eeff, 0xffffff, 0x00e5ff]
+    },
+    resonance: {
+        name: 'Resonance',
+        glow: 0xff6600,
+        accent: 0xff2200,
+        bgGradient: 'rgba(255, 68, 0, 0.2)',
+        palette: [0xff4400, 0xff2200, 0xff8800, 0xffaa00, 0xffffff, 0xcc0000, 0xffaa00]
+    },
+    synthwave: {
+        name: 'Synthwave',
+        glow: 0xff00aa,
+        accent: 0x00ffff,
+        bgGradient: 'rgba(255, 0, 255, 0.2)',
+        palette: [0xff00ff, 0x00ffff, 0xff00aa, 0xaa00ff, 0xffffff, 0x00e5ff, 0xff00ff]
+    }
+};
+
+export const DEFAULT_THEME_KEY = 'combine';
+export const DEFAULT_QUALITY = 'HIGH';

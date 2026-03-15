@@ -1,20 +1,50 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# The Nested Core — 3D Audio Visualizer
 
-# Run and deploy your AI Studio app
+> An immersive real-time audio visualizer built with React, Three.js and WebAudio API.
+> Aesthetics inspired by the industrial sci-fi world of Half-Life: Alyx.
 
-This contains everything you need to run your app locally.
+## Features
+- Real-time 3D geometric core with reactive particle physics
+- Three visual themes: Combine, Resonance, Synthwave
+- Audio sources: file upload, microphone, system audio capture
+- Orbit controls (drag to rotate, scroll to zoom)
+- HIGH / LOW quality toggle (40k / 5k particles)
+- CRT scanline overlay aesthetic
 
-View your app in AI Studio: https://ai.studio/apps/99c8a6e2-0150-45a0-8f4a-13daa3849867
+## Tech Stack
+- React 19 + TypeScript
+- Three.js (WebGL renderer, geometry, particles)
+- Web Audio API (AnalyserNode, FFT)
+- Tailwind CSS v4
+- Vite
 
-## Run Locally
+## Getting Started
 
-**Prerequisites:**  Node.js
+```bash
+npm install
+npm run dev
+```
 
+Open http://localhost:3000
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Controls
+| Action | Input |
+|---|---|
+| Rotate view | Click + drag |
+| Zoom | Scroll wheel |
+| Upload audio | File button |
+| Use microphone | Mic button |
+| System audio | System button (shares screen) |
+
+## Project Structure
+```
+src/
+├── components/     # UI panels (Status, ThemeSelector, ControlPanel)
+├── hooks/          # useAudioEngine, useVisualizer
+├── constants/      # THEMES, MAX_PARTICLES
+├── types/          # Shared TypeScript types
+└── App.tsx
+```
+
+## License
+Apache-2.0
