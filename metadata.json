@@ -1,0 +1,7 @@
+{
+  "name": "The Nested Core",
+  "description": "An immersive 3D audio visualizer featuring a reactive geometric core and particle physics.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
