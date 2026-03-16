@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { THEMES } from '../constants/themes';
+import { THEMES, QUALITY_PARTICLE_LIMITS } from '../constants/themes';
 import { ThemeKey, Quality, AudioData } from '../types';
-import { MAX_PARTICLES } from '../constants/themes';
+import { PARTICLE_TIERS } from '../constants/themes';
 import { AnimationPreset } from '../constants/presets';
 
 interface VisualizerProps {
@@ -12,11 +12,11 @@ interface VisualizerProps {
     quality: Quality;
     audioDataRef: React.MutableRefObject<AudioData>;
     preset: AnimationPreset;
+    onAutoQualityChange?: (quality: Quality) => void;
 }
 
 // --- Curl Noise Helpers ---
 
-// Smooth noise base usando senos entrelazados — más suave que Math.random
 const snoise = (x: number, y: number, z: number): number => {
     return (
         Math.sin(x * 1.7 + z * 0.3) * Math.cos(y * 2.1 - x * 0.7) +
@@ -25,47 +25,115 @@ const snoise = (x: number, y: number, z: number): number => {
     ) / 3.0;
 };
 
-// Curl del campo vectorial — garantiza flujo coherente sin divergencia
-// Resultado: vector perpendicular al gradiente del noise → corrientes tipo fluido
-const curlNoise = (
-    px: number, py: number, pz: number,
-    t: number,
-    turbulence: number  // 0.0 = flujo suave, 1.0 = más caótico
-): { x: number; y: number; z: number } => {
-    const eps = 0.01;
-    const scale = 0.35 + (turbulence * 0.15); // campo más grande = corrientes más anchas
+const CURL_GRID_SIZE = 16;
+const CURL_GRID_TOTAL = CURL_GRID_SIZE * CURL_GRID_SIZE * CURL_GRID_SIZE;
+const curlGridBuffer = new Float32Array(CURL_GRID_TOTAL * 3);
 
-    const sx = px * scale, sy = py * scale, sz = pz * scale;
-    const ts = t * 0.12; // velocidad de evolución del campo — lento = más chill
+const CURL_WORLD_MIN = -15.0;
+const CURL_WORLD_MAX =  15.0;
+const CURL_WORLD_RANGE = CURL_WORLD_MAX - CURL_WORLD_MIN;
 
-    // Derivadas parciales del noise para construir el curl
-    const dFy_dz = (snoise(sx, sy, sz + eps + ts) - snoise(sx, sy, sz - eps + ts)) / (2 * eps);
-    const dFz_dy = (snoise(sx, sy + eps, sz + ts) - snoise(sx, sy - eps, sz + ts)) / (2 * eps);
+const updateCurlGrid = (t: number, turbulence: number) => {
+    const scale = 0.35 + (turbulence * 0.15);
+    const ts = t * 0.12;
+    const eps = 0.1;
 
-    const dFz_dx = (snoise(sx + eps, sy, sz + ts) - snoise(sx - eps, sy, sz + ts)) / (2 * eps);
-    const dFx_dz = (snoise(sx, sy, sz + eps + ts) - snoise(sx, sy, sz - eps + ts)) / (2 * eps);
+    for (let xi = 0; xi < CURL_GRID_SIZE; xi++) {
+        for (let yi = 0; yi < CURL_GRID_SIZE; yi++) {
+            for (let zi = 0; zi < CURL_GRID_SIZE; zi++) {
+                const wx = CURL_WORLD_MIN + (xi / (CURL_GRID_SIZE - 1)) * CURL_WORLD_RANGE;
+                const wy = CURL_WORLD_MIN + (yi / (CURL_GRID_SIZE - 1)) * CURL_WORLD_RANGE;
+                const wz = CURL_WORLD_MIN + (zi / (CURL_GRID_SIZE - 1)) * CURL_WORLD_RANGE;
 
-    const dFx_dy = (snoise(sx, sy + eps, sz + ts) - snoise(sx, sy - eps, sz + ts)) / (2 * eps);
-    const dFy_dx = (snoise(sx + eps, sy, sz + ts) - snoise(sx - eps, sy, sz + ts)) / (2 * eps);
+                const sx = wx * scale, sy = wy * scale, sz = wz * scale;
 
-    return {
-        x: dFy_dz - dFz_dy,
-        y: dFz_dx - dFx_dz,
-        z: dFx_dy - dFy_dx,
-    };
+                const dFy_dz = (snoise(sx, sy, sz + eps + ts) - snoise(sx, sy, sz - eps + ts)) / (2 * eps);
+                const dFz_dy = (snoise(sx, sy + eps, sz + ts) - snoise(sx, sy - eps, sz + ts)) / (2 * eps);
+                const dFz_dx = (snoise(sx + eps, sy, sz + ts) - snoise(sx - eps, sy, sz + ts)) / (2 * eps);
+                const dFx_dz = (snoise(sx, sy, sz + eps + ts) - snoise(sx, sy, sz - eps + ts)) / (2 * eps);
+                const dFx_dy = (snoise(sx, sy + eps, sz + ts) - snoise(sx, sy - eps, sz + ts)) / (2 * eps);
+                const dFy_dx = (snoise(sx + eps, sy, sz + ts) - snoise(sx - eps, sy, sz + ts)) / (2 * eps);
+
+                const idx = (xi * CURL_GRID_SIZE * CURL_GRID_SIZE + yi * CURL_GRID_SIZE + zi) * 3;
+                curlGridBuffer[idx]     = dFy_dz - dFz_dy;
+                curlGridBuffer[idx + 1] = dFz_dx - dFx_dz;
+                curlGridBuffer[idx + 2] = dFx_dy - dFy_dx;
+            }
+        }
+    }
+};
+
+// OPTIMIZATION 1: Pass an 'out' object to prevent garbage collection spikes (no more 15,000 objects generated per frame)
+const sampleCurlGrid = (px: number, py: number, pz: number, out: { x: number, y: number, z: number }) => {
+    const tx = Math.max(0, Math.min(1, (px - CURL_WORLD_MIN) / CURL_WORLD_RANGE));
+    const ty = Math.max(0, Math.min(1, (py - CURL_WORLD_MIN) / CURL_WORLD_RANGE));
+    const tz = Math.max(0, Math.min(1, (pz - CURL_WORLD_MIN) / CURL_WORLD_RANGE));
+
+    const gx = Math.min(CURL_GRID_SIZE - 2, Math.floor(tx * (CURL_GRID_SIZE - 1)));
+    const gy = Math.min(CURL_GRID_SIZE - 2, Math.floor(ty * (CURL_GRID_SIZE - 1)));
+    const gz = Math.min(CURL_GRID_SIZE - 2, Math.floor(tz * (CURL_GRID_SIZE - 1)));
+
+    const fx = tx * (CURL_GRID_SIZE - 1) - gx;
+    const fy = ty * (CURL_GRID_SIZE - 1) - gy;
+    const fz = tz * (CURL_GRID_SIZE - 1) - gz;
+
+    const G = CURL_GRID_SIZE;
+    const idx = (x: number, y: number, z: number) => (x * G * G + y * G + z) * 3;
+
+    const i000 = idx(gx,   gy,   gz  );
+    const i100 = idx(gx+1, gy,   gz  );
+    const i010 = idx(gx,   gy+1, gz  );
+    const i110 = idx(gx+1, gy+1, gz  );
+    const i001 = idx(gx,   gy,   gz+1);
+    const i101 = idx(gx+1, gy,   gz+1);
+    const i011 = idx(gx,   gy+1, gz+1);
+    const i111 = idx(gx+1, gy+1, gz+1);
+
+    const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
+    const interpComponent = (offset: number) =>
+        lerp(
+            lerp(lerp(curlGridBuffer[i000+offset], curlGridBuffer[i100+offset], fx),
+                lerp(curlGridBuffer[i010+offset], curlGridBuffer[i110+offset], fx), fy),
+            lerp(lerp(curlGridBuffer[i001+offset], curlGridBuffer[i101+offset], fx),
+                lerp(curlGridBuffer[i011+offset], curlGridBuffer[i111+offset], fx), fy),
+            fz
+        );
+
+    out.x = interpComponent(0);
+    out.y = interpComponent(1);
+    out.z = interpComponent(2);
+};
+
+const detectParticleTier = (): 'HIGH' | 'LOW' | 'ULTRA_LOW' => {
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    if (isMobile) return 'ULTRA_LOW';
+
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    if (!gl) return 'ULTRA_LOW';
+
+    const maxTextures = gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS);
+    if (maxTextures <= 8) return 'ULTRA_LOW';
+    if (maxTextures <= 12) return 'LOW';
+    return 'HIGH';
 };
 
 export const useVisualizer = ({
-    containerRef,
-    themeKey,
-    quality,
-    audioDataRef,
-    preset
-}: VisualizerProps) => {
-    
+                                  containerRef,
+                                  themeKey,
+                                  quality,
+                                  audioDataRef,
+                                  preset,
+                                  onAutoQualityChange
+                              }: VisualizerProps) => {
+
     const themeRef = useRef(THEMES[themeKey]);
     const qualityRef = useRef(quality);
     const presetRef = useRef(preset);
+
+    // OPTIMIZATION 2: Pre-allocate a small dynamic palette array instead of 15,000 individual THREE.Colors
+    const currentPaletteRef = useRef<THREE.Color[]>([]);
 
     useEffect(() => { themeRef.current = THEMES[themeKey]; }, [themeKey]);
     useEffect(() => { qualityRef.current = quality; }, [quality]);
@@ -77,15 +145,14 @@ export const useVisualizer = ({
     const controlsRef = useRef<OrbitControls | null>(null);
     const coreGroupRef = useRef<THREE.Group | null>(null);
     const outerIcoRef = useRef<THREE.Mesh | null>(null);
-    
+
     const vertexSpritesRef = useRef<any[]>([]);
     const edgeCylindersRef = useRef<any[]>([]);
     const particlesRef = useRef<THREE.LineSegments | null>(null);
     const lightsRef = useRef<any>({});
-    
+
     const animationFrameId = useRef<number | null>(null);
 
-    // Dynamic glow texture based on color
     const createGlowTexture = (colorHex: number) => {
         const canvas = document.createElement('canvas');
         canvas.width = 64;
@@ -149,15 +216,22 @@ export const useVisualizer = ({
         return envMap;
     };
 
-    // React to quality changes via reference update, not re-initializing the whole scene
     useEffect(() => {
         if (rendererRef.current) {
-            rendererRef.current.setPixelRatio(quality === 'HIGH' ? Math.min(window.devicePixelRatio, 2) : 1);
+            rendererRef.current.setPixelRatio(
+                quality === 'HIGH'
+                    ? Math.min(window.devicePixelRatio, 2)
+                    : quality === 'LOW'
+                        ? Math.min(window.devicePixelRatio, 1.5)
+                        : 1
+            );
         }
     }, [quality]);
 
     useEffect(() => {
         if (!containerRef.current) return;
+
+        const isHighQuality = qualityRef.current === 'HIGH';
 
         const scene = new THREE.Scene();
         sceneRef.current = scene;
@@ -167,8 +241,19 @@ export const useVisualizer = ({
         camera.position.set(0, 0, 10);
         cameraRef.current = camera;
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
-        renderer.setPixelRatio(qualityRef.current === 'HIGH' ? Math.min(window.devicePixelRatio, 2) : 1);
+        const renderer = new THREE.WebGLRenderer({
+            antialias: isHighQuality,
+            alpha: true,
+            powerPreference: isHighQuality ? "high-performance" : "default",
+            precision: isHighQuality ? "highp" : "mediump",
+        });
+        renderer.setPixelRatio(
+            qualityRef.current === 'HIGH'
+                ? Math.min(window.devicePixelRatio, 2)
+                : qualityRef.current === 'LOW'
+                    ? Math.min(window.devicePixelRatio, 1.5)
+                    : 1
+        );
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.toneMappingExposure = 1.2;
         renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -205,36 +290,56 @@ export const useVisualizer = ({
 
         const studioEnvMap = generateEnvironmentMap(renderer);
 
-        const mainMat = new THREE.MeshPhysicalMaterial({
-            color: 0x05080c,
-            metalness: 1.0,
-            roughness: 0.12,
-            envMap: studioEnvMap,
-            envMapIntensity: 1.5,
-            flatShading: true,
-            clearcoat: 1.0,
-            clearcoatRoughness: 0.05,
-        });
+        const mainMat = isHighQuality
+            ? new THREE.MeshPhysicalMaterial({
+                color: 0x05080c,
+                metalness: 1.0,
+                roughness: 0.12,
+                envMap: studioEnvMap,
+                envMapIntensity: 1.5,
+                flatShading: true,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.05,
+            })
+            : new THREE.MeshStandardMaterial({
+                color: 0x05080c,
+                metalness: 0.9,
+                roughness: 0.2,
+                envMap: studioEnvMap,
+                envMapIntensity: 1.2,
+                flatShading: true,
+            });
 
         const icoGeo = new THREE.IcosahedronGeometry(1.6, 0);
         const outerIco = new THREE.Mesh(icoGeo, mainMat);
         coreGroup.add(outerIco);
         outerIcoRef.current = outerIco;
-        
+
         const edgeGroup = new THREE.Group();
         const edgeGeo = new THREE.EdgesGeometry(icoGeo);
         const edgePos = edgeGeo.attributes.position.array;
 
-        const edgeMat = new THREE.MeshPhysicalMaterial({
-            color: 0x02050a,
-            metalness: 1.0,
-            roughness: 0.2,
-            envMap: studioEnvMap,
-            envMapIntensity: 1.0,
-            flatShading: true,
-            emissive: new THREE.Color(0x001133),
-            emissiveIntensity: 0.2
-        });
+        const edgeMat = isHighQuality
+            ? new THREE.MeshPhysicalMaterial({
+                color: 0x02050a,
+                metalness: 1.0,
+                roughness: 0.2,
+                envMap: studioEnvMap,
+                envMapIntensity: 1.0,
+                flatShading: true,
+                emissive: new THREE.Color(0x001133),
+                emissiveIntensity: 0.2
+            })
+            : new THREE.MeshStandardMaterial({
+                color: 0x02050a,
+                metalness: 0.8,
+                roughness: 0.3,
+                envMap: studioEnvMap,
+                envMapIntensity: 0.8,
+                flatShading: true,
+                emissive: new THREE.Color(0x001133),
+                emissiveIntensity: 0.15
+            });
 
         for (let i = 0; i < edgePos.length; i += 6) {
             const v1 = new THREE.Vector3(edgePos[i], edgePos[i+1], edgePos[i+2]);
@@ -283,9 +388,12 @@ export const useVisualizer = ({
             coreSprite.scale.set(0.05, 0.05, 1);
             sprite.add(coreSprite);
 
-            const pLight = new THREE.PointLight(themeRef.current.glow, 1.2, 1.5);
-            pLight.position.copy(baseVec).multiplyScalar(0.05);
-            sprite.add(pLight);
+            let pLight: THREE.PointLight | null = null;
+            if (isHighQuality) {
+                pLight = new THREE.PointLight(themeRef.current.glow, 1.2, 1.5);
+                pLight.position.copy(baseVec).multiplyScalar(0.05);
+                sprite.add(pLight);
+            }
 
             outerIco.add(sprite);
             vertexSpritesRef.current.push({
@@ -298,24 +406,28 @@ export const useVisualizer = ({
         }
 
         // --- Particle System ---
+        const deviceTier = detectParticleTier();
+        const tierOrder = ['ULTRA_LOW', 'LOW', 'HIGH'] as const;
+        const effectiveTier = tierOrder[
+            Math.min(tierOrder.indexOf(deviceTier), tierOrder.indexOf(qualityRef.current as any))
+            ] ?? 'LOW';
+
+        const ACTIVE_MAX = PARTICLE_TIERS[effectiveTier];
+
         const pGeo = new THREE.BufferGeometry();
-        const pPosArray = new Float32Array(MAX_PARTICLES * 2 * 3);
-        const pColorArray = new Float32Array(MAX_PARTICLES * 2 * 3);
-        const pVels = new Float32Array(MAX_PARTICLES * 3);
+        const pPosArray = new Float32Array(ACTIVE_MAX * 2 * 3);
+        const pColorArray = new Float32Array(ACTIVE_MAX * 2 * 3);
+        const pVels = new Float32Array(ACTIVE_MAX * 3);
         const pTrailLength = 0.002;
-        const pBaseColor: THREE.Color[] = [];
-        const pLife = new Float32Array(MAX_PARTICLES);
+        const pLife = new Float32Array(ACTIVE_MAX);
 
         const vertices: THREE.Vector3[] = [];
         for (let i = 0; i < vertexPos.count; i++) {
             vertices.push(new THREE.Vector3().fromBufferAttribute(vertexPos, i));
         }
 
-        for (let i = 0; i < MAX_PARTICLES; i++) {
+        for (let i = 0; i < ACTIVE_MAX; i++) {
             const i6 = i * 6;
-            const baseColor = new THREE.Color(themeRef.current.palette[i % themeRef.current.palette.length]);
-            pBaseColor.push(baseColor);
-
             pPosArray[i6] = pPosArray[i6 + 1] = pPosArray[i6 + 2] = 9999;
             pPosArray[i6 + 3] = pPosArray[i6 + 4] = pPosArray[i6 + 5] = 9999;
             pLife[i] = 0;
@@ -336,10 +448,16 @@ export const useVisualizer = ({
         });
 
         const particles = new THREE.LineSegments(pGeo, pMat);
-        particles.userData = { velocities: pVels, trailLength: pTrailLength, vertices, baseColor: pBaseColor, life: pLife };
+        particles.userData = {
+            velocities: pVels,
+            trailLength: pTrailLength,
+            vertices,
+            life: pLife,
+            activeMax: ACTIVE_MAX
+        };
         scene.add(particles);
         particlesRef.current = particles;
-        
+
         // Lighting
         const ambLight = new THREE.AmbientLight(0x0a1c28, 0.4);
         scene.add(ambLight);
@@ -377,13 +495,28 @@ export const useVisualizer = ({
         const worldVerticesCache = vertices.map(v => v.clone());
         let currentThemeKey = themeRef.current.name;
 
+        let autoQualityChecked = false;
+        const fpsHistory: number[] = [];
+        let lastFpsCheck = performance.now();
+        let frameCounter = 0;
+
+        let initialLimit = qualityRef.current === 'ULTRA_LOW' ? Math.floor(ACTIVE_MAX * 0.5) : ACTIVE_MAX;
+        const prevLimitRef = { current: initialLimit };
+        const heartbeatRef = { current: 1.0 };
+
+        // OPTIMIZATION 3: Flat arrays and pre-allocated objects for the loop
+        const flatVerts = new Float32Array(worldVerticesCache.length * 3);
+        const curlOut = { x: 0, y: 0, z: 0 };
+
         const animate = () => {
             if (!rendererRef.current || !sceneRef.current || !cameraRef.current) return;
 
             const time = Date.now() / 1000;
             const activeTheme = themeRef.current;
-            controlsRef.current?.update();
-            
+            if (controlsRef.current) {
+                controlsRef.current.update();
+            }
+
             if (currentThemeKey !== activeTheme.name) {
                 currentThemeKey = activeTheme.name;
                 const newGlowTex = createGlowTexture(activeTheme.glow);
@@ -392,6 +525,18 @@ export const useVisualizer = ({
                     v.spriteMat.needsUpdate = true;
                 });
             }
+
+            // Sync dynamic palette to avoid 15000 individual color lerps
+            if (currentPaletteRef.current.length !== activeTheme.palette.length) {
+                currentPaletteRef.current = activeTheme.palette.map(hex => new THREE.Color(hex));
+            } else {
+                activeTheme.palette.forEach((hex, idx) => {
+                    targetColor.setHex(hex);
+                    currentPaletteRef.current[idx].lerp(targetColor, 0.05);
+                });
+            }
+            const dynamicPalette = currentPaletteRef.current;
+            const paletteLen = dynamicPalette.length;
 
             if (sceneRef.current.fog instanceof THREE.FogExp2) {
                 targetColor.setHex(activeTheme.accent);
@@ -419,10 +564,15 @@ export const useVisualizer = ({
                 coreGroupRef.current.position.y = Math.sin(time * 0.8) * 0.15;
                 coreGroupRef.current.position.x = Math.cos(time * 0.6) * 0.08;
             }
-            
-            const targetScale = 1.0 + (sBass * 0.15 * br) + (Math.sin(time * 1.5) * 0.02);
+
+            const bassPeak = sBass * br;
+            const targetScale = 1.0 + (bassPeak * 0.45) + (Math.sin(time * 1.5) * 0.02);
+
+            const attack  = bassPeak > heartbeatRef.current - 1.0 ? 0.6 : 0.06;
+            heartbeatRef.current += (targetScale - heartbeatRef.current) * attack;
+
             if (outerIcoRef.current) {
-                outerIcoRef.current.scale.setScalar(targetScale);
+                outerIcoRef.current.scale.setScalar(heartbeatRef.current);
             }
 
             edgeCylindersRef.current.forEach(cyl => {
@@ -450,8 +600,10 @@ export const useVisualizer = ({
                     v.coreMesh.scale.setScalar(0.07 + (sTreble * 0.04));
                     v.coreMesh.material.opacity = (0.5 + (sTreble * 0.4) * flicker) * visibility;
 
-                    v.light.intensity = 1.0 * intensityMulti * flicker * presetRef.current.glowIntensity;
-                    v.light.color.lerp(targetColor.setHex(activeTheme.glow), 0.05);
+                    if (v.light) {
+                        v.light.intensity = 1.0 * intensityMulti * flicker * presetRef.current.glowIntensity;
+                        v.light.color.lerp(targetColor.setHex(activeTheme.glow), 0.05);
+                    }
                     v.mesh.position.copy(v.basePos);
                 }
             });
@@ -462,35 +614,53 @@ export const useVisualizer = ({
                 const vels = particlesRef.current.userData.velocities as Float32Array;
                 const baseTrailLength = particlesRef.current.userData.trailLength;
                 const vertices = particlesRef.current.userData.vertices;
-                const baseColors = particlesRef.current.userData.baseColor;
                 const life = particlesRef.current.userData.life;
+                const activeMax = particlesRef.current.userData.activeMax as number;
 
+                // Prepare flat array for lighting fast distance checks inside loop
                 if (coreGroupRef.current) {
                     for (let j = 0; j < vertices.length; j++) {
-                        worldVerticesCache[j]
+                        const v = worldVerticesCache[j]
                             .copy(vertices[j])
                             .applyEuler(coreGroupRef.current.rotation)
                             .add(coreGroupRef.current.position);
+                        flatVerts[j*3] = v.x;
+                        flatVerts[j*3+1] = v.y;
+                        flatVerts[j*3+2] = v.z;
                     }
                 }
 
-                const limit = qualityRef.current === 'HIGH' ? MAX_PARTICLES : 5000;
-                let maxSpawnRate = Math.floor(Math.pow(sAmp, 1.8) * 4000 * presetRef.current.particleDensity);
-                if (sAmp < 0.01) maxSpawnRate = 50 * presetRef.current.particleDensity;
-                let spawnedThisFrame = 0;
+                const limit = qualityRef.current === 'ULTRA_LOW'
+                    ? Math.floor(activeMax * 0.5)
+                    : activeMax;
 
-                for (let i = 0; i < MAX_PARTICLES; i++) {
-                    const i6 = i * 6;
-                    const i3 = i * 3;
-
-                    if (i >= limit) {
+                if (limit !== prevLimitRef.current) {
+                    for (let i = limit; i < activeMax; i++) {
+                        const i6 = i * 6;
                         positions[i6] = positions[i6+1] = positions[i6+2] = 9999;
                         positions[i6+3] = positions[i6+4] = positions[i6+5] = 9999;
-                        continue;
                     }
+                    prevLimitRef.current = limit;
+                    particlesRef.current.geometry.attributes.position.needsUpdate = true;
+                }
 
-                    targetColor.setHex(activeTheme.palette[i % activeTheme.palette.length]);
-                    baseColors[i].lerp(targetColor, 0.05);
+                const turbulence = presetRef.current.turbulence ?? 0.3;
+                frameCounter++;
+                if (frameCounter % 2 === 0) {
+                    updateCurlGrid(time, turbulence);
+                }
+
+                // Slightly boosted minimums to ensure HIGH preset feels fully populated
+                let maxSpawnRate = Math.floor(Math.pow(sAmp, 1.8) * 6000 * presetRef.current.particleDensity);
+                if (sAmp < 0.05) maxSpawnRate = 500 * presetRef.current.particleDensity;
+
+                let spawnedThisFrame = 0;
+                const VERY_CLOSE = 1.0;
+                const vertexCount = vertices.length;
+
+                for (let i = 0; i < limit; i++) {
+                    const i6 = i * 6;
+                    const i3 = i * 3;
 
                     if (life[i] <= 0) {
                         if (spawnedThisFrame < maxSpawnRate) {
@@ -498,12 +668,11 @@ export const useVisualizer = ({
                             life[i] = 1.5 + Math.random() * 2.0;
 
                             const angle = Math.random() * Math.PI * 2;
-                            
-                            // NUEVO — spawn más concentrado alrededor del core
+
                             const closeRing = Math.random() > 0.3;
                             const radius = closeRing
-                                ? 1.6 + Math.random() * 1.8          // anillo orbital cercano
-                                : 3.0 + Math.random() * 8.0;         // escapadas lejanas ocasionales
+                                ? 1.6 + Math.random() * 1.8
+                                : 3.0 + Math.random() * 8.0;
 
                             const ySpawn = (Math.random() - 0.5) * (closeRing ? 3.5 : 12.0);
 
@@ -511,11 +680,10 @@ export const useVisualizer = ({
                             positions[i6 + 1] = ySpawn;
                             positions[i6 + 2] = Math.sin(angle) * radius;
 
-                            // Velocidad inicial tangencial al anillo — refuerza la orbita
-                            const tangentX = -Math.sin(angle); // perpendicular al radio
+                            const tangentX = -Math.sin(angle);
                             const tangentZ =  Math.cos(angle);
                             const burstForce = 0.008 + (sBass * sBass * 0.12 * br);
-                            const tangentBias = 0.4; // cuánto de la velocidad inicial es tangencial vs radial
+                            const tangentBias = 0.4;
 
                             vels[i3]     = (Math.cos(angle) * (1 - tangentBias) + tangentX * tangentBias) * (0.008 + Math.random() * 0.015) * burstForce;
                             vels[i3 + 1] = (0.003 + Math.random() * 0.015) * burstForce;
@@ -537,40 +705,39 @@ export const useVisualizer = ({
 
                         let distFromCenterSq = px*px + py*py + pz*pz;
 
-                        // NUEVO — Curl noise field
-                        const turbulence = presetRef.current.turbulence ?? 0.3;
-                        const curl = curlNoise(px, py, pz, time, turbulence);
+                        // Reuses single curlOut object instead of creating millions per second
+                        sampleCurlGrid(px, py, pz, curlOut);
 
-                        // Fuerza base del curl — muy suave para que sea fluido
                         const flowStrength = (0.00012 + (sAmp * 0.0003)) * (presetRef.current.particleDensity ?? 1.0);
 
-                        let fx = curl.x * flowStrength;
-                        let fy = curl.y * flowStrength * 0.25; // componente vertical reducida → flujo más horizontal/orbital
-                        let fz = curl.z * flowStrength;
+                        let fx = curlOut.x * flowStrength;
+                        let fy = curlOut.y * flowStrength * 0.25;
+                        let fz = curlOut.z * flowStrength;
 
-                        // Mantener la gravedad leve ascendente original
                         vy += 0.00008 + (sAmp * 0.0003);
 
-                        // Bass distorsiona el campo entero — efecto de onda de choque
                         if (sBass > 0.4) {
                             const bassDistort = (sBass - 0.4) * 0.0008 * br;
-                            fx += curl.z * bassDistort; // cross-field distortion
-                            fz -= curl.x * bassDistort;
+                            fx += curlOut.z * bassDistort;
+                            fz -= curlOut.x * bassDistort;
                         }
 
-                        let isNearVertex = false;
                         let closestDistSq = Infinity;
                         let cVx = 0, cVy = 0, cVz = 0;
 
-                        for (let j = 0; j < worldVerticesCache.length; j++) {
-                            let v = worldVerticesCache[j];
-                            let dx = v.x - px, dy = v.y - py, dz = v.z - pz;
-                            let dSq = dx*dx + dy*dy + dz*dz;
+                        // Fast flattened loop over vertices
+                        for (let j = 0; j < vertexCount; j++) {
+                            const j3 = j * 3;
+                            const dx = flatVerts[j3] - px, dy = flatVerts[j3+1] - py, dz = flatVerts[j3+2] - pz;
+                            const dSq = dx*dx + dy*dy + dz*dz;
                             if (dSq < closestDistSq) {
                                 closestDistSq = dSq;
                                 cVx = dx; cVy = dy; cVz = dz;
+                                if (dSq < VERY_CLOSE) break;
                             }
                         }
+
+                        let isNearVertex = closestDistSq < 0.15;
 
                         if (closestDistSq < 60.0) {
                             let dist = Math.sqrt(closestDistSq);
@@ -587,11 +754,8 @@ export const useVisualizer = ({
                             fx += dirX * forceMag;
                             fy += dirY * forceMag;
                             fz += dirZ * forceMag;
-
-                            if (closestDistSq < 0.15) isNearVertex = true;
                         }
 
-                        // NUEVO — menos damping = corrientes más largas y persistentes
                         const dampBase = 0.955 + (turbulence * 0.01);
                         vx = (vx + fx) * dampBase;
                         vy = (vy + fy) * dampBase;
@@ -619,9 +783,12 @@ export const useVisualizer = ({
                         } else {
                             const fade = Math.max(0, life[i]);
                             const colorBoost = fade * (0.8 + (sAmp * 2.0) + (sBass * 3.0 * br));
-                            colors[i6] = Math.min(1, baseColors[i].r * colorBoost);
-                            colors[i6 + 1] = Math.min(1, baseColors[i].g * colorBoost);
-                            colors[i6 + 2] = Math.min(1, baseColors[i].b * colorBoost);
+
+                            // Look up pre-calculated palette color index
+                            const pColor = dynamicPalette[i % paletteLen];
+                            colors[i6] = Math.min(1, pColor.r * colorBoost);
+                            colors[i6 + 1] = Math.min(1, pColor.g * colorBoost);
+                            colors[i6 + 2] = Math.min(1, pColor.b * colorBoost);
                             colors[i6 + 3] = colors[i6];
                             colors[i6 + 4] = colors[i6 + 1];
                             colors[i6 + 5] = colors[i6 + 2];
@@ -630,6 +797,24 @@ export const useVisualizer = ({
                 }
                 particlesRef.current.geometry.attributes.position.needsUpdate = true;
                 particlesRef.current.geometry.attributes.color.needsUpdate = true;
+            }
+
+            if (!autoQualityChecked && onAutoQualityChange) {
+                const now = performance.now();
+                const delta = now - lastFpsCheck;
+                lastFpsCheck = now;
+
+                if (delta > 0) fpsHistory.push(1000 / delta);
+
+                if (fpsHistory.length >= 60) {
+                    autoQualityChecked = true;
+                    const avgFps = fpsHistory.reduce((a, b) => a + b) / fpsHistory.length;
+
+                    if (avgFps < 45 && qualityRef.current === 'HIGH') {
+                        rendererRef.current?.setPixelRatio(1);
+                        onAutoQualityChange('LOW');
+                    }
+                }
             }
 
             rendererRef.current.render(sceneRef.current, cameraRef.current);
@@ -644,8 +829,7 @@ export const useVisualizer = ({
             controls.dispose();
             studioEnvMap.dispose();
             renderer.dispose();
-            
-            // Clean up geometries and materials
+
             icoGeo.dispose();
             mainMat.dispose();
             edgeGeo.dispose();

@@ -9,4 +9,4 @@ export interface AudioData {
   dataArray: Uint8Array | null;
 }
 
-export type Quality = 'HIGH' | 'LOW';
+export type Quality = 'HIGH' | 'LOW' | 'ULTRA_LOW';

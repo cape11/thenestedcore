@@ -21,11 +21,16 @@ export default function App() {
     themeKey, 
     quality, 
     audioDataRef: audio.audioDataRef,
-    preset
+    preset,
+    onAutoQualityChange: (q) => setQuality(q)
   });
 
   const handleQualityChange = () => {
-    setQuality(prev => prev === 'HIGH' ? 'LOW' : 'HIGH');
+    setQuality(prev => 
+      prev === 'HIGH' ? 'LOW' : 
+      prev === 'LOW' ? 'ULTRA_LOW' : 
+      'HIGH'
+    );
   };
 
   const handlePresetChange = (key: keyof AnimationPreset, value: number) => {
