@@ -2,15 +2,19 @@ import React, { useEffect, useRef } from 'react';
 import { Mic, Play, Pause, Upload, Monitor } from 'lucide-react';
 import { AudioSourceType, ThemeKey, AudioData } from '../../types';
 import { THEMES } from '../../constants/themes';
+import { RadioPanel } from '../RadioPanel';
+import { RadioStation } from '../../constants/radio';
 
 interface ControlPanelProps {
     sourceType: AudioSourceType;
     isPlaying: boolean;
     themeKey: ThemeKey;
     audioDataRef: React.MutableRefObject<AudioData>;
+    activeStationId: string | null;
     onFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
     onMicActivate: () => void;
     onSystemActivate: () => void;
+    onRadioSelect: (station: RadioStation) => void;
     onTogglePlay: () => void;
     onReset: () => void;
 }
@@ -20,9 +24,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     isPlaying,
     themeKey,
     audioDataRef,
+    activeStationId,
     onFileUpload,
     onMicActivate,
     onSystemActivate,
+    onRadioSelect,
     onTogglePlay,
     onReset
 }) => {
@@ -113,19 +119,37 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                             </div>
                             <span className="text-[9px] md:text-[10px] uppercase tracking-[0.4em] text-white/40 group-hover:text-white/80 transition-colors">System</span>
                         </button>
+                        
+                        <RadioPanel
+                            themeKey={themeKey}
+                            activeStationId={activeStationId}
+                            isConnecting={false}
+                            onSelectStation={onRadioSelect}
+                        />
                     </>
                 ) : (
-                    <button
-                        onClick={onTogglePlay}
-                        aria-label={isPlaying ? "Pause Audio" : "Play Audio"}
-                        className="group relative w-16 h-16 md:w-20 md:h-20 border border-white/30 flex items-center justify-center bg-black/40 text-white backdrop-blur-md transition-all duration-300 hover:-translate-y-[1px]"
-                    >
-                        <div className="absolute inset-0 opacity-50 group-hover:opacity-100 transition-opacity duration-300" 
-                             style={{ boxShadow: `inset 0 0 20px ${themeColorStr}60, 0 0 15px ${themeColorStr}60` }} />
-                        <div className="relative z-10">
-                            {isPlaying ? <Pause size={24} /> : <Play size={24} className="ml-1" />}
-                        </div>
-                    </button>
+                    <div className="flex items-center gap-6 md:gap-10">
+                        <button
+                            onClick={onTogglePlay}
+                            aria-label={isPlaying ? "Pause Audio" : "Play Audio"}
+                            className="group relative w-16 h-16 md:w-20 md:h-20 border border-white/30 flex items-center justify-center bg-black/40 text-white backdrop-blur-md transition-all duration-300 hover:-translate-y-[1px]"
+                        >
+                            <div className="absolute inset-0 opacity-50 group-hover:opacity-100 transition-opacity duration-300" 
+                                 style={{ boxShadow: `inset 0 0 20px ${themeColorStr}60, 0 0 15px ${themeColorStr}60` }} />
+                            <div className="relative z-10">
+                                {isPlaying ? <Pause size={24} /> : <Play size={24} className="ml-1" />}
+                            </div>
+                        </button>
+
+                        {sourceType === 'radio' && (
+                            <RadioPanel
+                                themeKey={themeKey}
+                                activeStationId={activeStationId}
+                                isConnecting={false}
+                                onSelectStation={onRadioSelect}
+                            />
+                        )}
+                    </div>
                 )}
             </div>
 

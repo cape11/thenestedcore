@@ -6,10 +6,12 @@ import { useVisualizer } from './hooks/useVisualizer';
 import { StatusPanel } from './components/StatusPanel';
 import { ThemeSelector } from './components/ThemeSelector';
 import { ControlPanel } from './components/ControlPanel';
+import { loadPreset, savePreset, AnimationPreset } from './constants/presets';
 
 export default function App() {
   const [themeKey, setThemeKey] = useState<ThemeKey>(DEFAULT_THEME_KEY);
   const [quality, setQuality] = useState<Quality>(DEFAULT_QUALITY);
+  const [preset, setPreset] = useState<AnimationPreset>(loadPreset);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const audio = useAudioEngine();
@@ -18,11 +20,20 @@ export default function App() {
     containerRef, 
     themeKey, 
     quality, 
-    audioDataRef: audio.audioDataRef 
+    audioDataRef: audio.audioDataRef,
+    preset
   });
 
   const handleQualityChange = () => {
     setQuality(prev => prev === 'HIGH' ? 'LOW' : 'HIGH');
+  };
+
+  const handlePresetChange = (key: keyof AnimationPreset, value: number) => {
+    setPreset(prev => {
+        const next = { ...prev, [key]: value };
+        savePreset(next);
+        return next;
+    });
   };
 
   const handleReset = () => {
@@ -53,8 +64,10 @@ export default function App() {
         themeKey={themeKey} 
         quality={quality} 
         audioDataRef={audio.audioDataRef} 
+        preset={preset}
         onThemeChange={setThemeKey} 
         onQualityChange={handleQualityChange} 
+        onPresetChange={handlePresetChange}
       />
       
       <ControlPanel 
@@ -62,9 +75,11 @@ export default function App() {
         isPlaying={audio.isPlaying}
         themeKey={themeKey}
         audioDataRef={audio.audioDataRef}
+        activeStationId={audio.activeStation?.id ?? null}
         onFileUpload={audio.handleFileUpload}
         onMicActivate={audio.activateMic}
         onSystemActivate={audio.activateSystemAudio}
+        onRadioSelect={audio.activateRadio}
         onTogglePlay={audio.togglePlay}
         onReset={handleReset}
       />

@@ -1,6 +1,6 @@
-export type ThemeKey = 'combine' | 'resonance' | 'synthwave';
+export type ThemeKey = 'combine' | 'resonance' | 'synthwave' | 'xen';
 
-export type AudioSourceType = 'none' | 'file' | 'mic' | 'system';
+export type AudioSourceType = 'none' | 'file' | 'mic' | 'system' | 'radio';
 
 export interface AudioData {
   bass: number;

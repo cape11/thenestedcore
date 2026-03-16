@@ -4,26 +4,72 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { THEMES } from '../constants/themes';
 import { ThemeKey, Quality, AudioData } from '../types';
 import { MAX_PARTICLES } from '../constants/themes';
+import { AnimationPreset } from '../constants/presets';
 
 interface VisualizerProps {
     containerRef: React.RefObject<HTMLDivElement | null>;
     themeKey: ThemeKey;
     quality: Quality;
     audioDataRef: React.MutableRefObject<AudioData>;
+    preset: AnimationPreset;
 }
+
+// --- Curl Noise Helpers ---
+
+// Smooth noise base usando senos entrelazados — más suave que Math.random
+const snoise = (x: number, y: number, z: number): number => {
+    return (
+        Math.sin(x * 1.7 + z * 0.3) * Math.cos(y * 2.1 - x * 0.7) +
+        Math.sin(y * 1.3 + x * 0.9) * Math.cos(z * 1.8 + y * 0.4) +
+        Math.sin(z * 2.4 - y * 1.1) * Math.cos(x * 1.5 + z * 0.6)
+    ) / 3.0;
+};
+
+// Curl del campo vectorial — garantiza flujo coherente sin divergencia
+// Resultado: vector perpendicular al gradiente del noise → corrientes tipo fluido
+const curlNoise = (
+    px: number, py: number, pz: number,
+    t: number,
+    turbulence: number  // 0.0 = flujo suave, 1.0 = más caótico
+): { x: number; y: number; z: number } => {
+    const eps = 0.01;
+    const scale = 0.35 + (turbulence * 0.15); // campo más grande = corrientes más anchas
+
+    const sx = px * scale, sy = py * scale, sz = pz * scale;
+    const ts = t * 0.12; // velocidad de evolución del campo — lento = más chill
+
+    // Derivadas parciales del noise para construir el curl
+    const dFy_dz = (snoise(sx, sy, sz + eps + ts) - snoise(sx, sy, sz - eps + ts)) / (2 * eps);
+    const dFz_dy = (snoise(sx, sy + eps, sz + ts) - snoise(sx, sy - eps, sz + ts)) / (2 * eps);
+
+    const dFz_dx = (snoise(sx + eps, sy, sz + ts) - snoise(sx - eps, sy, sz + ts)) / (2 * eps);
+    const dFx_dz = (snoise(sx, sy, sz + eps + ts) - snoise(sx, sy, sz - eps + ts)) / (2 * eps);
+
+    const dFx_dy = (snoise(sx, sy + eps, sz + ts) - snoise(sx, sy - eps, sz + ts)) / (2 * eps);
+    const dFy_dx = (snoise(sx + eps, sy, sz + ts) - snoise(sx - eps, sy, sz + ts)) / (2 * eps);
+
+    return {
+        x: dFy_dz - dFz_dy,
+        y: dFz_dx - dFx_dz,
+        z: dFx_dy - dFy_dx,
+    };
+};
 
 export const useVisualizer = ({
     containerRef,
     themeKey,
     quality,
-    audioDataRef
+    audioDataRef,
+    preset
 }: VisualizerProps) => {
     
     const themeRef = useRef(THEMES[themeKey]);
     const qualityRef = useRef(quality);
+    const presetRef = useRef(preset);
 
     useEffect(() => { themeRef.current = THEMES[themeKey]; }, [themeKey]);
     useEffect(() => { qualityRef.current = quality; }, [quality]);
+    useEffect(() => { presetRef.current = preset; }, [preset]);
 
     const sceneRef = useRef<THREE.Scene | null>(null);
     const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -210,7 +256,7 @@ export const useVisualizer = ({
         const vertexPos = icoGeo.attributes.position;
         const spriteMat = new THREE.SpriteMaterial({
             map: glowTex,
-            color: 0xffffff,
+            color: themeRef.current.glow,
             transparent: true,
             opacity: 0.9,
             blending: THREE.AdditiveBlending,
@@ -302,23 +348,23 @@ export const useVisualizer = ({
         mainLight.position.set(5, 5, 10);
         scene.add(mainLight);
 
-        const blueBeam = new THREE.SpotLight(0xffffff, 4000, 150, Math.PI / 2.0, 0.4, 1);
+        const blueBeam = new THREE.SpotLight(themeRef.current.accent, 4000, 150, Math.PI / 2.0, 0.4, 1);
         blueBeam.position.set(0, 0, 20);
         blueBeam.target.position.set(0, 0, 0);
         scene.add(blueBeam);
         scene.add(blueBeam.target);
 
-        const blueBeamBack = new THREE.SpotLight(0xffffff, 3500, 150, Math.PI / 2.0, 0.4, 1);
+        const blueBeamBack = new THREE.SpotLight(themeRef.current.accent, 3500, 150, Math.PI / 2.0, 0.4, 1);
         blueBeamBack.position.set(0, 0, -20);
         blueBeamBack.target.position.set(0, 0, 0);
         scene.add(blueBeamBack);
         scene.add(blueBeamBack.target);
 
-        const blueFill = new THREE.PointLight(0xffffff, 400, 60);
+        const blueFill = new THREE.PointLight(themeRef.current.accent, 400, 60);
         blueFill.position.set(-8, 8, 15);
         scene.add(blueFill);
 
-        const blueFill2 = new THREE.PointLight(0xffffff, 300, 60);
+        const blueFill2 = new THREE.PointLight(themeRef.current.accent, 300, 60);
         blueFill2.position.set(8, -8, -15);
         scene.add(blueFill2);
 
@@ -353,9 +399,11 @@ export const useVisualizer = ({
             }
 
             const { bass: sBass, treble: sTreble, amplitude: sAmp } = audioDataRef.current;
+            const rs = presetRef.current.rotationSpeed;
+            const br = presetRef.current.bassResponse;
 
             if (cameraRef.current) {
-                const targetFov = 40 + (sBass * 15);
+                const targetFov = 40 + (sBass * 15 * br);
                 cameraRef.current.fov += (targetFov - cameraRef.current.fov) * 0.1;
                 cameraRef.current.updateProjectionMatrix();
             }
@@ -366,28 +414,27 @@ export const useVisualizer = ({
             lightsRef.current.blueFill2.color.lerp(targetColor.setHex(activeTheme.accent), 0.05);
 
             if (coreGroupRef.current) {
-                coreGroupRef.current.rotation.y = time * 0.2 + (sBass * 0.3);
-                coreGroupRef.current.rotation.x = time * 0.1;
+                coreGroupRef.current.rotation.y = time * (0.2 * rs) + (sBass * 0.3 * br);
+                coreGroupRef.current.rotation.x = time * (0.1 * rs);
                 coreGroupRef.current.position.y = Math.sin(time * 0.8) * 0.15;
                 coreGroupRef.current.position.x = Math.cos(time * 0.6) * 0.08;
             }
             
-            const targetScale = 1.0 + (sBass * 0.15) + (Math.sin(time * 1.5) * 0.02);
+            const targetScale = 1.0 + (sBass * 0.15 * br) + (Math.sin(time * 1.5) * 0.02);
             if (outerIcoRef.current) {
                 outerIcoRef.current.scale.setScalar(targetScale);
             }
 
             edgeCylindersRef.current.forEach(cyl => {
-                const thickness = Math.min(1.5, 1.0 + (sBass * 0.8));
+                const thickness = Math.min(1.5, 1.0 + (sBass * 0.8 * br));
                 cyl.mesh.scale.set(thickness, 1.0, thickness);
                 cyl.mesh.material.emissiveIntensity = 0.1 + (sTreble * 0.8);
-                cyl.mesh.material.emissive.lerp(targetColor.setHex(activeTheme.accent), 0.05);
             });
 
             vertexSpritesRef.current.forEach((v, i) => {
                 const flicker = Math.sin(time * 2 + i * 0.8) * 0.1 + 0.9;
-                const sizeMulti = 1.0 + (sBass * 0.3) + (sTreble * 0.1);
-                const intensityMulti = Math.min(1.5, 1.0 + (sTreble * 0.8) + (sBass * 0.4));
+                const sizeMulti = 1.0 + (sBass * 0.3 * br) + (sTreble * 0.1);
+                const intensityMulti = Math.min(1.5, 1.0 + (sTreble * 0.8) + (sBass * 0.4 * br));
 
                 if (coreGroupRef.current && cameraRef.current) {
                     tempNormal.copy(v.basePos).normalize().applyEuler(coreGroupRef.current.rotation);
@@ -398,11 +445,12 @@ export const useVisualizer = ({
 
                     v.mesh.material.opacity = Math.min(1.0, 0.7 + (sTreble * 0.2)) * flicker * visibility;
                     v.mesh.scale.setScalar(0.22 * sizeMulti);
+                    v.mesh.material.color.lerp(targetColor.setHex(activeTheme.glow), 0.05);
 
                     v.coreMesh.scale.setScalar(0.07 + (sTreble * 0.04));
                     v.coreMesh.material.opacity = (0.5 + (sTreble * 0.4) * flicker) * visibility;
 
-                    v.light.intensity = 1.0 * intensityMulti * flicker;
+                    v.light.intensity = 1.0 * intensityMulti * flicker * presetRef.current.glowIntensity;
                     v.light.color.lerp(targetColor.setHex(activeTheme.glow), 0.05);
                     v.mesh.position.copy(v.basePos);
                 }
@@ -427,8 +475,8 @@ export const useVisualizer = ({
                 }
 
                 const limit = qualityRef.current === 'HIGH' ? MAX_PARTICLES : 5000;
-                let maxSpawnRate = Math.floor(Math.pow(sAmp, 1.8) * 4000);
-                if (sAmp < 0.01) maxSpawnRate = 50;
+                let maxSpawnRate = Math.floor(Math.pow(sAmp, 1.8) * 4000 * presetRef.current.particleDensity);
+                if (sAmp < 0.01) maxSpawnRate = 50 * presetRef.current.particleDensity;
                 let spawnedThisFrame = 0;
 
                 for (let i = 0; i < MAX_PARTICLES; i++) {
@@ -450,17 +498,28 @@ export const useVisualizer = ({
                             life[i] = 1.5 + Math.random() * 2.0;
 
                             const angle = Math.random() * Math.PI * 2;
-                            let radius = Math.random() > 0.3 ? 1.5 + Math.random() * 2.0 : 2.0 + Math.random() * 15.0;
-                            let ySpawn = (Math.random() - 0.5) * (Math.random() > 0.3 ? 4.0 : 20.0);
+                            
+                            // NUEVO — spawn más concentrado alrededor del core
+                            const closeRing = Math.random() > 0.3;
+                            const radius = closeRing
+                                ? 1.6 + Math.random() * 1.8          // anillo orbital cercano
+                                : 3.0 + Math.random() * 8.0;         // escapadas lejanas ocasionales
 
-                            positions[i6] = Math.cos(angle) * radius;
+                            const ySpawn = (Math.random() - 0.5) * (closeRing ? 3.5 : 12.0);
+
+                            positions[i6]     = Math.cos(angle) * radius;
                             positions[i6 + 1] = ySpawn;
                             positions[i6 + 2] = Math.sin(angle) * radius;
 
-                            const burstForce = 0.01 + (sBass * sBass * 0.15);
-                            vels[i3] = Math.cos(angle) * (0.01 + Math.random() * 0.02) * burstForce;
-                            vels[i3 + 1] = (0.005 + Math.random() * 0.02) * burstForce;
-                            vels[i3 + 2] = Math.sin(angle) * (0.01 + Math.random() * 0.02) * burstForce;
+                            // Velocidad inicial tangencial al anillo — refuerza la orbita
+                            const tangentX = -Math.sin(angle); // perpendicular al radio
+                            const tangentZ =  Math.cos(angle);
+                            const burstForce = 0.008 + (sBass * sBass * 0.12 * br);
+                            const tangentBias = 0.4; // cuánto de la velocidad inicial es tangencial vs radial
+
+                            vels[i3]     = (Math.cos(angle) * (1 - tangentBias) + tangentX * tangentBias) * (0.008 + Math.random() * 0.015) * burstForce;
+                            vels[i3 + 1] = (0.003 + Math.random() * 0.015) * burstForce;
+                            vels[i3 + 2] = (Math.sin(angle) * (1 - tangentBias) + tangentZ * tangentBias) * (0.008 + Math.random() * 0.015) * burstForce;
                         } else {
                             positions[i6] = positions[i6+1] = positions[i6+2] = 9999;
                             positions[i6+3] = positions[i6+4] = positions[i6+5] = 9999;
@@ -478,12 +537,26 @@ export const useVisualizer = ({
 
                         let distFromCenterSq = px*px + py*py + pz*pz;
 
-                        vy += 0.0001 + (sAmp * 0.0004);
+                        // NUEVO — Curl noise field
+                        const turbulence = presetRef.current.turbulence ?? 0.3;
+                        const curl = curlNoise(px, py, pz, time, turbulence);
 
-                        const noiseSpeed = time + (sTreble * 4.0);
-                        let fx = Math.sin(py * 3.0 + noiseSpeed) * 0.00001 - (pz * (0.00001 + sTreble * 0.00005));
-                        let fy = Math.sin(pz * 3.0 + noiseSpeed) * 0.00001;
-                        let fz = Math.sin(px * 3.0 + noiseSpeed) * 0.00001 + (px * (0.00001 + sTreble * 0.00005));
+                        // Fuerza base del curl — muy suave para que sea fluido
+                        const flowStrength = (0.00012 + (sAmp * 0.0003)) * (presetRef.current.particleDensity ?? 1.0);
+
+                        let fx = curl.x * flowStrength;
+                        let fy = curl.y * flowStrength * 0.25; // componente vertical reducida → flujo más horizontal/orbital
+                        let fz = curl.z * flowStrength;
+
+                        // Mantener la gravedad leve ascendente original
+                        vy += 0.00008 + (sAmp * 0.0003);
+
+                        // Bass distorsiona el campo entero — efecto de onda de choque
+                        if (sBass > 0.4) {
+                            const bassDistort = (sBass - 0.4) * 0.0008 * br;
+                            fx += curl.z * bassDistort; // cross-field distortion
+                            fz -= curl.x * bassDistort;
+                        }
 
                         let isNearVertex = false;
                         let closestDistSq = Infinity;
@@ -508,8 +581,8 @@ export const useVisualizer = ({
                             fx += tx * (0.0003 / (dist + 0.1));
                             fz += tz * (0.0003 / (dist + 0.1));
 
-                            let forceMag = (0.0002 + (sBass * 0.0008)) / (closestDistSq + 0.5);
-                            if (sBass > 0.55 && closestDistSq < 4.0) forceMag = -0.003 * sBass;
+                            let forceMag = (0.0002 + (sBass * 0.0008 * br)) / (closestDistSq + 0.5);
+                            if (sBass > 0.55 && closestDistSq < 4.0) forceMag = -0.003 * sBass * br;
 
                             fx += dirX * forceMag;
                             fy += dirY * forceMag;
@@ -518,9 +591,11 @@ export const useVisualizer = ({
                             if (closestDistSq < 0.15) isNearVertex = true;
                         }
 
-                        vx = (vx + fx) * 0.92;
-                        vy = (vy + fy) * 0.92;
-                        vz = (vz + fz) * 0.92;
+                        // NUEVO — menos damping = corrientes más largas y persistentes
+                        const dampBase = 0.955 + (turbulence * 0.01);
+                        vx = (vx + fx) * dampBase;
+                        vy = (vy + fy) * dampBase;
+                        vz = (vz + fz) * dampBase;
 
                         px += vx; py += vy; pz += vz;
 
@@ -543,7 +618,7 @@ export const useVisualizer = ({
                             colors[i6 + 3] = colors[i6 + 4] = colors[i6 + 5] = 0;
                         } else {
                             const fade = Math.max(0, life[i]);
-                            const colorBoost = fade * (0.8 + (sAmp * 2.0) + (sBass * 3.0));
+                            const colorBoost = fade * (0.8 + (sAmp * 2.0) + (sBass * 3.0 * br));
                             colors[i6] = Math.min(1, baseColors[i].r * colorBoost);
                             colors[i6 + 1] = Math.min(1, baseColors[i].g * colorBoost);
                             colors[i6 + 2] = Math.min(1, baseColors[i].b * colorBoost);

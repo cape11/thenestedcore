@@ -1,21 +1,27 @@
 import React, { useEffect, useRef } from 'react';
 import { THEMES } from '../../constants/themes';
 import { ThemeKey, Quality, AudioData } from '../../types';
+import { PresetPanel } from '../PresetPanel';
+import { AnimationPreset } from '../../constants/presets';
 
 interface ThemeSelectorProps {
     themeKey: ThemeKey;
     quality: Quality;
     audioDataRef: React.MutableRefObject<AudioData>;
+    preset: AnimationPreset;
     onThemeChange: (key: ThemeKey) => void;
     onQualityChange: () => void;
+    onPresetChange: (key: keyof AnimationPreset, value: number) => void;
 }
 
 export const ThemeSelector: React.FC<ThemeSelectorProps> = ({ 
     themeKey, 
     quality, 
     audioDataRef, 
+    preset,
     onThemeChange, 
-    onQualityChange 
+    onQualityChange,
+    onPresetChange
 }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const theme = THEMES[themeKey];
@@ -78,7 +84,7 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
                     onChange={(e) => onThemeChange(e.target.value as ThemeKey)}
                 >
                     {(Object.keys(THEMES) as ThemeKey[]).map((key) => (
-                        <option key={key} value={key}>{THEMES[key].name}</option>
+                        <option key={key} value={key}>{THEMES[key as ThemeKey].name}</option>
                     ))}
                 </select>
 
@@ -115,11 +121,18 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
             <div className="flex flex-col items-end gap-2 mt-2">
                 <button
                     onClick={onQualityChange}
-                    className="group relative px-4 py-2 text-[9px] uppercase tracking-[0.3em] border border-white/10 bg-black/40 text-white/50 hover:border-white/40 hover:text-white backdrop-blur-md transition-all duration-300 hover:-translate-y-[1px]"
+                    className="group relative px-4 py-2 text-[9px] uppercase tracking-[0.3em] border border-white/10 bg-black/40 text-white/50 hover:border-white/40 hover:text-white backdrop-blur-md transition-all duration-300 hover:-translate-y-[1px] w-32"
                 >
                     <span>SYS_QUAL: {quality}</span>
                 </button>
             </div>
+
+            {/* Presets */}
+            <PresetPanel
+                themeKey={themeKey}
+                preset={preset}
+                onPresetChange={onPresetChange}
+            />
         </div>
     );
 };

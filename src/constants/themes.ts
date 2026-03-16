@@ -21,6 +21,13 @@ export const THEMES = {
         accent: 0x00ffff,
         bgGradient: 'rgba(255, 0, 255, 0.2)',
         palette: [0xff00ff, 0x00ffff, 0xff00aa, 0xaa00ff, 0xffffff, 0x00e5ff, 0xff00ff]
+    },
+    xen: {
+        name: 'Xen',
+        glow: 0x39ff14,
+        accent: 0x7b2fff,
+        bgGradient: 'rgba(100, 20, 200, 0.18)',
+        palette: [0x39ff14, 0x00ff88, 0x7b2fff, 0xc800ff, 0x00ffcc, 0xffffff, 0x44ff44]
     }
 };
 

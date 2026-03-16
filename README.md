@@ -2,6 +2,8 @@
 
 > An immersive real-time audio visualizer built with React, Three.js and WebAudio API.
 > Aesthetics inspired by the industrial sci-fi world of Half-Life: Alyx.
+> 
+> **[Live Demo](https://nested-core.web.app/)**
 
 ## Features
 - Real-time 3D geometric core with reactive particle physics

@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "financial-personal-data"
+  },
+  "targets": {
+    "financial-personal-data": {
+      "hosting": {
+        "nested-core": [
+          "nested-core"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}
