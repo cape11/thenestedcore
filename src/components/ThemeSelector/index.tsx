@@ -12,6 +12,7 @@ interface ThemeSelectorProps {
     onThemeChange: (key: ThemeKey) => void;
     onQualityChange: () => void;
     onPresetChange: (key: keyof AnimationPreset, value: number) => void;
+    isUIVisible: boolean;
 }
 
 export const ThemeSelector: React.FC<ThemeSelectorProps> = ({ 
@@ -21,7 +22,8 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
     preset,
     onThemeChange, 
     onQualityChange,
-    onPresetChange
+    onPresetChange,
+    isUIVisible
 }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const theme = THEMES[themeKey];
@@ -38,6 +40,8 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
 
         const draw = () => {
             animationFrameId.current = requestAnimationFrame(draw);
+
+            if (!isUIVisible) return;
 
             frameCount++;
             if (frameCount % 2 !== 0) return;
@@ -64,7 +68,7 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
         return () => {
             if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
         };
-    }, [themeColorStr, audioDataRef]);
+    }, [themeColorStr, audioDataRef, isUIVisible]);
 
     return (
         <div className="absolute top-16 md:top-24 right-4 md:right-8 z-20 flex flex-col items-end gap-6 font-mono pointer-events-auto max-h-[calc(100vh-8rem)] overflow-y-auto overflow-x-hidden pb-4 pr-2 custom-scrollbar">

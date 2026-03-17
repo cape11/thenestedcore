@@ -85,6 +85,7 @@ export default function App() {
           audioStatus={audio.audioStatus}
           audioDataRef={audio.audioDataRef}
           isPlaying={audio.isPlaying}
+          isUIVisible={isUIVisible}
         />
 
         <ThemeSelector
@@ -95,6 +96,7 @@ export default function App() {
           onThemeChange={setThemeKey}
           onQualityChange={handleQualityChange}
           onPresetChange={handlePresetChange}
+          isUIVisible={isUIVisible}
         />
       </div>
 

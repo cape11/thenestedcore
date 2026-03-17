@@ -7,9 +7,10 @@ interface StatusPanelProps {
     audioStatus: string;
     audioDataRef: React.MutableRefObject<AudioData>;
     isPlaying: boolean;
+    isUIVisible: boolean;
 }
 
-export const StatusPanel: React.FC<StatusPanelProps> = ({ themeKey, audioStatus, audioDataRef, isPlaying }) => {
+export const StatusPanel: React.FC<StatusPanelProps> = ({ themeKey, audioStatus, audioDataRef, isPlaying, isUIVisible }) => {
     const theme = THEMES[themeKey];
     const themeColorStr = `#${theme.glow.toString(16).padStart(6, '0')}`;
 
@@ -23,6 +24,8 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({ themeKey, audioStatus,
         
         const updateUI = () => {
             animationFrameId.current = requestAnimationFrame(updateUI);
+
+            if (!isUIVisible) return;
 
             frameCount++;
             if (frameCount % 2 !== 0) return;
@@ -55,7 +58,7 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({ themeKey, audioStatus,
         return () => {
             if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
         };
-    }, [themeColorStr, audioDataRef]);
+    }, [themeColorStr, audioDataRef, isUIVisible]);
 
     let statusColor = 'bg-yellow-500';
     if (audioStatus.includes('ERROR') || audioStatus.includes('DENIED')) statusColor = 'bg-red-500';

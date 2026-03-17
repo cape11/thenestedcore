@@ -526,8 +526,18 @@ export const useVisualizer = ({
         const flatVerts = new Float32Array(worldVerticesCache.length * 3);
         const curlOut = { x: 0, y: 0, z: 0 };
 
+        let lastTime = performance.now();
+
         const animate = () => {
             if (!rendererRef.current || !sceneRef.current || !cameraRef.current) return;
+
+            const now = performance.now();
+            let dt = (now - lastTime) / 1000;
+            if (dt > 0.1) dt = 0.016; // Cap dt to prevent huge jumps if you switch browser tabs
+            lastTime = now;
+
+            // Create a multiplier to scale your existing 60fps-tuned math
+            const fpsScale = dt * 60;
 
             const time = Date.now() / 1000;
             const activeTheme = themeRef.current;
@@ -742,7 +752,8 @@ export const useVisualizer = ({
                     }
 
                     if (life[i] > 0) {
-                        life[i] -= 0.008;
+                        // 1. Scale life decay
+                        life[i] -= 0.008 * fpsScale;
 
                         let px = positions[i6], py = positions[i6 + 1], pz = positions[i6 + 2];
                         let vx = vels[i3], vy = vels[i3 + 1], vz = vels[i3 + 2];
@@ -758,7 +769,8 @@ export const useVisualizer = ({
                         let fy = curlOut.y * flowStrength * 0.25;
                         let fz = curlOut.z * flowStrength;
 
-                        vy += 0.00008 + (sAmp * 0.0003);
+                        // 2. Scale gravity/audio lift
+                        vy += (0.00008 + (sAmp * 0.0003)) * fpsScale;
 
                         if (sBass > 0.4) {
                             const bassDistort = (sBass - 0.4) * 0.0008 * br;
@@ -805,11 +817,15 @@ export const useVisualizer = ({
                         }
 
                         const dampBase = 0.955 + (turbulence * 0.01);
+                        // Apply damping
                         vx = (vx + fx) * dampBase;
                         vy = (vy + fy) * dampBase;
                         vz = (vz + fz) * dampBase;
 
-                        px += vx; py += vy; pz += vz;
+                        // 3. Scale the actual movement by the frame rate
+                        px += vx * fpsScale;
+                        py += vy * fpsScale;
+                        pz += vz * fpsScale;
 
                         vels[i3] = vx; vels[i3 + 1] = vy; vels[i3 + 2] = vz;
                         positions[i6] = px; positions[i6 + 1] = py; positions[i6 + 2] = pz;
