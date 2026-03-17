@@ -223,7 +223,7 @@ export const useVisualizer = ({
                     ? Math.min(window.devicePixelRatio, 2)
                     : quality === 'LOW'
                         ? Math.min(window.devicePixelRatio, 1.5)
-                        : 1
+                        : Math.min(window.devicePixelRatio, 0.75) // Downscale dramatically for mid-tier mobile FPS while maintaining general shape
             );
         }
     }, [quality]);
@@ -244,7 +244,7 @@ export const useVisualizer = ({
         const renderer = new THREE.WebGLRenderer({
             antialias: isHighQuality,
             alpha: true,
-            powerPreference: isHighQuality ? "high-performance" : "default",
+            powerPreference: "high-performance",
             precision: isHighQuality ? "highp" : "mediump",
         });
         renderer.setPixelRatio(
@@ -252,7 +252,7 @@ export const useVisualizer = ({
                 ? Math.min(window.devicePixelRatio, 2)
                 : qualityRef.current === 'LOW'
                     ? Math.min(window.devicePixelRatio, 1.5)
-                    : 1
+                    : Math.min(window.devicePixelRatio, 0.75)
         );
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.toneMappingExposure = 1.2;
@@ -389,6 +389,7 @@ export const useVisualizer = ({
             sprite.add(coreSprite);
 
             let pLight: THREE.PointLight | null = null;
+            // Only add individual vertex lights on HIGH to save massive shading overhead on mobile
             if (isHighQuality) {
                 pLight = new THREE.PointLight(themeRef.current.glow, 1.2, 1.5);
                 pLight.position.copy(baseVec).multiplyScalar(0.05);
@@ -667,13 +668,15 @@ export const useVisualizer = ({
 
                 const turbulence = presetRef.current.turbulence ?? 0.3;
                 frameCounter++;
-                if (frameCounter % 2 === 0) {
+                const updateFreq = qualityRef.current === 'HIGH' ? 2 : qualityRef.current === 'LOW' ? 4 : 6;
+                if (frameCounter % updateFreq === 0) {
                     updateCurlGrid(time, turbulence);
                 }
 
-                // Slightly boosted minimums to ensure HIGH preset feels fully populated
-                let maxSpawnRate = Math.floor(Math.pow(sAmp, 1.8) * 6000 * presetRef.current.particleDensity);
-                if (sAmp < 0.05) maxSpawnRate = 500 * presetRef.current.particleDensity;
+                // Slightly boosted minimums to ensure HIGH preset feels fully populated, scale down spawn rates on lower
+                let spawnMultiplier = qualityRef.current === 'ULTRA_LOW' ? 0.3 : qualityRef.current === 'LOW' ? 0.6 : 1.0;
+                let maxSpawnRate = Math.floor(Math.pow(sAmp, 1.8) * 6000 * presetRef.current.particleDensity * spawnMultiplier);
+                if (sAmp < 0.05) maxSpawnRate = 500 * presetRef.current.particleDensity * spawnMultiplier;
 
                 let spawnedThisFrame = 0;
                 const VERY_CLOSE = 1.0;
@@ -825,7 +828,7 @@ export const useVisualizer = ({
                 }
             }
 
-            if (!autoQualityChecked && onAutoQualityChange) {
+            if (onAutoQualityChange) {
                 const now = performance.now();
                 const delta = now - lastFpsCheck;
                 lastFpsCheck = now;
@@ -833,12 +836,24 @@ export const useVisualizer = ({
                 if (delta > 0) fpsHistory.push(1000 / delta);
 
                 if (fpsHistory.length >= 60) {
-                    autoQualityChecked = true;
                     const avgFps = fpsHistory.reduce((a, b) => a + b) / fpsHistory.length;
 
-                    if (avgFps < 45 && qualityRef.current === 'HIGH') {
-                        rendererRef.current?.setPixelRatio(1);
-                        onAutoQualityChange('LOW');
+                    if (avgFps < 45) {
+                        if (qualityRef.current === 'HIGH') {
+                            rendererRef.current?.setPixelRatio(1.5);
+                            onAutoQualityChange('LOW');
+                            fpsHistory.length = 0; // Reset history for next check
+                        } else if (qualityRef.current === 'LOW') {
+                            rendererRef.current?.setPixelRatio(0.75);
+                            onAutoQualityChange('ULTRA_LOW');
+                            fpsHistory.length = 0;
+                        } else {
+                            // If already at ULTRA_LOW, just clear so array doesn't grow infinitely
+                            fpsHistory.length = 0;
+                        }
+                    } else if (fpsHistory.length > 200) {
+                        // Prevent memory leak if consistently performing well
+                        fpsHistory.shift();
                     }
                 }
             }

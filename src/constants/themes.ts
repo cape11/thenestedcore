@@ -40,7 +40,16 @@ export const THEMES = {
 };
 
 export const DEFAULT_THEME_KEY = 'combine';
-export const DEFAULT_QUALITY = 'HIGH';
+
+const detectInitialQuality = (): Quality => {
+    if (typeof navigator !== 'undefined') {
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        if (isMobile) return 'ULTRA_LOW';
+    }
+    return 'HIGH';
+};
+
+export const DEFAULT_QUALITY = detectInitialQuality();
 
 export const QUALITY_PARTICLE_LIMITS: Record<Quality, number> = {
     HIGH: 15000,
