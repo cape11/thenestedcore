@@ -19,8 +19,14 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({ themeKey, audioStatus,
 
     useEffect(() => {
         const segments = 20;
+        let frameCount = 0;
         
         const updateUI = () => {
+            animationFrameId.current = requestAnimationFrame(updateUI);
+
+            frameCount++;
+            if (frameCount % 2 !== 0) return;
+
             if (!signalRef.current || !vuMeterRef.current) return;
             const data = audioDataRef.current;
             
@@ -42,8 +48,6 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({ themeKey, audioStatus,
                     child.style.opacity = '0.3';
                 }
             }
-            
-            animationFrameId.current = requestAnimationFrame(updateUI);
         };
         
         animationFrameId.current = requestAnimationFrame(updateUI);

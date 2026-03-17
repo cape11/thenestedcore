@@ -235,8 +235,8 @@ export const useVisualizer = ({
                 quality === 'HIGH'
                     ? Math.min(window.devicePixelRatio, 2)
                     : quality === 'LOW'
-                        ? Math.min(window.devicePixelRatio, 1.5)
-                        : Math.min(window.devicePixelRatio, 0.75) // Downscale dramatically for mid-tier mobile FPS while maintaining general shape
+                        ? Math.min(window.devicePixelRatio, 1.0) // Reduced from 1.5
+                        : 0.5 // Reduced from 0.75 for huge mobile performance boost
             );
         }
     }, [quality]);
@@ -264,8 +264,8 @@ export const useVisualizer = ({
             qualityRef.current === 'HIGH'
                 ? Math.min(window.devicePixelRatio, 2)
                 : qualityRef.current === 'LOW'
-                    ? Math.min(window.devicePixelRatio, 1.5)
-                    : Math.min(window.devicePixelRatio, 0.75)
+                    ? Math.min(window.devicePixelRatio, 1.0)
+                    : 0.5
         );
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.toneMappingExposure = 1.2;
@@ -314,14 +314,16 @@ export const useVisualizer = ({
                 clearcoat: 1.0,
                 clearcoatRoughness: 0.05,
             })
-            : new THREE.MeshStandardMaterial({
-                color: 0x05080c,
-                metalness: 0.9,
-                roughness: 0.2,
-                envMap: studioEnvMap,
-                envMapIntensity: 1.2,
-                flatShading: true,
-            });
+            : qualityRef.current === 'ULTRA_LOW'
+                ? new THREE.MeshBasicMaterial({ color: 0x05080c }) // Ultra-fast flat material
+                : new THREE.MeshStandardMaterial({
+                    color: 0x05080c,
+                    metalness: 0.9,
+                    roughness: 0.2,
+                    envMap: studioEnvMap,
+                    envMapIntensity: 1.2,
+                    flatShading: true,
+                });
 
         const icoGeo = new THREE.IcosahedronGeometry(1.6, 0);
         const outerIco = new THREE.Mesh(icoGeo, mainMat);
@@ -343,16 +345,18 @@ export const useVisualizer = ({
                 emissive: new THREE.Color(0x001133),
                 emissiveIntensity: 0.2
             })
-            : new THREE.MeshStandardMaterial({
-                color: 0x02050a,
-                metalness: 0.8,
-                roughness: 0.3,
-                envMap: studioEnvMap,
-                envMapIntensity: 0.8,
-                flatShading: true,
-                emissive: new THREE.Color(0x001133),
-                emissiveIntensity: 0.15
-            });
+            : qualityRef.current === 'ULTRA_LOW'
+                ? new THREE.MeshBasicMaterial({ color: 0x02050a })
+                : new THREE.MeshStandardMaterial({
+                    color: 0x02050a,
+                    metalness: 0.8,
+                    roughness: 0.3,
+                    envMap: studioEnvMap,
+                    envMapIntensity: 0.8,
+                    flatShading: true,
+                    emissive: new THREE.Color(0x001133),
+                    emissiveIntensity: 0.15
+                });
 
         for (let i = 0; i < edgePos.length; i += 6) {
             const v1 = new THREE.Vector3(edgePos[i], edgePos[i+1], edgePos[i+2]);
@@ -764,36 +768,40 @@ export const useVisualizer = ({
 
                         let closestDistSq = Infinity;
                         let cVx = 0, cVy = 0, cVz = 0;
+                        let isNearVertex = false;
 
-                        // Fast flattened loop over vertices
-                        for (let j = 0; j < vertexCount; j++) {
-                            const j3 = j * 3;
-                            const dx = flatVerts[j3] - px, dy = flatVerts[j3+1] - py, dz = flatVerts[j3+2] - pz;
-                            const dSq = dx*dx + dy*dy + dz*dz;
-                            if (dSq < closestDistSq) {
-                                closestDistSq = dSq;
-                                cVx = dx; cVy = dy; cVz = dz;
-                                if (dSq < VERY_CLOSE) break;
+                        // OPTIMIZATION: Skip expensive vertex collision physics on ULTRA_LOW
+                        if (qualityRef.current !== 'ULTRA_LOW') {
+                            // Fast flattened loop over vertices
+                            for (let j = 0; j < vertexCount; j++) {
+                                const j3 = j * 3;
+                                const dx = flatVerts[j3] - px, dy = flatVerts[j3+1] - py, dz = flatVerts[j3+2] - pz;
+                                const dSq = dx*dx + dy*dy + dz*dz;
+                                if (dSq < closestDistSq) {
+                                    closestDistSq = dSq;
+                                    cVx = dx; cVy = dy; cVz = dz;
+                                    if (dSq < VERY_CLOSE) break;
+                                }
                             }
-                        }
 
-                        let isNearVertex = closestDistSq < 0.15;
+                            isNearVertex = closestDistSq < 0.15;
 
-                        if (closestDistSq < 60.0) {
-                            let dist = Math.sqrt(closestDistSq);
-                            let dirX = cVx / dist, dirY = cVy / dist, dirZ = cVz / dist;
+                            if (closestDistSq < 60.0) {
+                                let dist = Math.sqrt(closestDistSq);
+                                let dirX = cVx / dist, dirY = cVy / dist, dirZ = cVz / dist;
 
-                            let tx = dirZ, ty = 0, tz = -dirX;
+                                let tx = dirZ, ty = 0, tz = -dirX;
 
-                            fx += tx * (0.0003 / (dist + 0.1));
-                            fz += tz * (0.0003 / (dist + 0.1));
+                                fx += tx * (0.0003 / (dist + 0.1));
+                                fz += tz * (0.0003 / (dist + 0.1));
 
-                            let forceMag = (0.0002 + (sBass * 0.0008 * br)) / (closestDistSq + 0.5);
-                            if (sBass > 0.55 && closestDistSq < 4.0) forceMag = -0.003 * sBass * br;
+                                let forceMag = (0.0002 + (sBass * 0.0008 * br)) / (closestDistSq + 0.5);
+                                if (sBass > 0.55 && closestDistSq < 4.0) forceMag = -0.003 * sBass * br;
 
-                            fx += dirX * forceMag;
-                            fy += dirY * forceMag;
-                            fz += dirZ * forceMag;
+                                fx += dirX * forceMag;
+                                fy += dirY * forceMag;
+                                fz += dirZ * forceMag;
+                            }
                         }
 
                         const dampBase = 0.955 + (turbulence * 0.01);

@@ -2,8 +2,8 @@ import { Quality } from '../types';
 
 export const PARTICLE_TIERS = {
     HIGH:       15000,
-    LOW:         5000,
-    ULTRA_LOW:   1500,
+    LOW:         4000,
+    ULTRA_LOW:    400,
 } as const;
 
 export const MAX_PARTICLES = 15000;
@@ -53,6 +53,6 @@ export const DEFAULT_QUALITY = detectInitialQuality();
 
 export const QUALITY_PARTICLE_LIMITS: Record<Quality, number> = {
     HIGH: 15000,
-    LOW: 5000,
-    ULTRA_LOW: 1500,
+    LOW: 4000,
+    ULTRA_LOW: 400,
 };

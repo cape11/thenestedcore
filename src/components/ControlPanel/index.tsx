@@ -47,8 +47,14 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
         const totalBars = 128;
         const barWidth = canvas.width / totalBars;
+        let frameCount = 0;
 
         const draw = () => {
+            animationFrameId.current = requestAnimationFrame(draw);
+
+            frameCount++;
+            if (frameCount % 2 !== 0) return;
+
             const data = audioDataRef.current;
             if (data && data.dataArray) {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -67,7 +73,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     ctx.fillRect(i * barWidth, canvas.height - height, Math.max(1, barWidth - 1), height);
                 }
             }
-            animationFrameId.current = requestAnimationFrame(draw);
         };
 
         animationFrameId.current = requestAnimationFrame(draw);

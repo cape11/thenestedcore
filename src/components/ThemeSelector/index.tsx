@@ -34,7 +34,14 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
+        let frameCount = 0;
+
         const draw = () => {
+            animationFrameId.current = requestAnimationFrame(draw);
+
+            frameCount++;
+            if (frameCount % 2 !== 0) return;
+
             const data = audioDataRef.current;
             if (data && data.dataArray) {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -50,7 +57,6 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
                     ctx.fillRect(i * barWidth, canvas.height - height, barWidth - 1, height);
                 }
             }
-            animationFrameId.current = requestAnimationFrame(draw);
         };
 
         animationFrameId.current = requestAnimationFrame(draw);
