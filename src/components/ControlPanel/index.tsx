@@ -17,6 +17,7 @@ interface ControlPanelProps {
     onRadioSelect: (station: RadioStation) => void;
     onTogglePlay: () => void;
     onReset: () => void;
+    isUIVisible?: boolean;
 }
 
 export const ControlPanel: React.FC<ControlPanelProps> = ({
@@ -30,7 +31,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     onSystemActivate,
     onRadioSelect,
     onTogglePlay,
-    onReset
+    onReset,
+    isUIVisible = true
 }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const theme = THEMES[themeKey];
@@ -76,19 +78,19 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     }, [themeColorStr, audioDataRef]);
 
     return (
-        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-20 w-full max-w-2xl px-4 flex flex-col items-center gap-6 font-mono pointer-events-auto">
+        <div className={`absolute bottom-4 md:bottom-12 left-1/2 -translate-x-1/2 z-20 w-full max-w-2xl px-2 md:px-4 flex flex-col items-center gap-4 md:gap-6 font-mono ${!isUIVisible ? 'pointer-events-none' : 'pointer-events-auto'}`}>
             
-            {/* 128 Bar Spectrum */}
-            <div className="w-full flex justify-center opacity-80 mix-blend-screen">
+            {/* 128 Bar Spectrum - visible even when UI is hidden */}
+            <div className={`w-full flex justify-center opacity-80 mix-blend-screen transition-all duration-500 ${!isUIVisible ? 'opacity-100' : ''}`}>
                 <canvas 
                     ref={canvasRef} 
                     width={512} 
                     height={32} 
-                    className="w-full max-w-lg h-8"
+                    className="w-full max-w-[280px] sm:max-w-md md:max-w-lg h-6 md:h-8"
                 />
             </div>
 
-            <div className="flex flex-wrap justify-center gap-6 md:gap-10">
+            <div className={`flex flex-wrap justify-center gap-4 md:gap-10 transition-opacity duration-500 ${!isUIVisible ? 'opacity-0' : 'opacity-100 pointer-events-auto'}`}>
                 {sourceType === 'none' ? (
                     <>
                         <label className="flex flex-col items-center gap-3 cursor-pointer group" aria-label="Upload Audio File">
@@ -156,7 +158,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             <button
                 onClick={onReset}
                 aria-label="Reset System Engine"
-                className="mt-4 text-[8px] uppercase tracking-[0.6em] text-white/20 hover:text-white/80 transition-colors duration-500"
+                className={`mt-2 md:mt-4 text-[8px] uppercase tracking-[0.6em] text-white/20 hover:text-white/80 transition-colors duration-500 ${!isUIVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
             >
                 [ SYS_RESET ]
             </button>

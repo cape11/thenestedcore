@@ -61,7 +61,7 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
     }, [themeColorStr, audioDataRef]);
 
     return (
-        <div className="absolute top-8 right-8 z-20 flex flex-col items-end gap-6 font-mono pointer-events-auto">
+        <div className="absolute top-16 md:top-24 right-4 md:right-8 z-20 flex flex-col items-end gap-6 font-mono pointer-events-auto max-h-[calc(100vh-8rem)] overflow-y-auto overflow-x-hidden pb-4 pr-2 custom-scrollbar">
             {/* Mini Spectrum */}
             <div className="flex flex-col items-end gap-2 bg-black/40 p-3 border border-white/10 backdrop-blur-md">
                 <span className="text-[8px] uppercase tracking-[0.4em] text-white/40">Signal Auth</span>

@@ -12,6 +12,7 @@ export default function App() {
   const [themeKey, setThemeKey] = useState<ThemeKey>(DEFAULT_THEME_KEY);
   const [quality, setQuality] = useState<Quality>(DEFAULT_QUALITY);
   const [preset, setPreset] = useState<AnimationPreset>(loadPreset);
+  const [isUIVisible, setIsUIVisible] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const audio = useAudioEngine();
@@ -57,24 +58,34 @@ export default function App() {
       {/* WebGL Container */}
       <div ref={containerRef} className="absolute inset-0 z-10 w-full h-full cursor-grab active:cursor-grabbing" />
 
+      {/* Toggle UI Button */}
+      <button
+        onClick={() => setIsUIVisible(!isUIVisible)}
+        className="absolute top-4 right-4 md:top-8 md:right-8 z-50 px-3 py-1.5 md:px-4 md:py-2 text-[8px] md:text-[9px] uppercase tracking-[0.3em] border border-white/10 bg-black/40 text-white/50 hover:border-white/40 hover:text-white backdrop-blur-md transition-all duration-300 pointer-events-auto"
+      >
+        {isUIVisible ? '[ HIDE UI ]' : '[ SHOW UI ]'}
+      </button>
+
       {/* UI Panels */}
-      <StatusPanel 
-        themeKey={themeKey} 
-        audioStatus={audio.audioStatus} 
-        audioDataRef={audio.audioDataRef} 
-        isPlaying={audio.isPlaying} 
-      />
-      
-      <ThemeSelector 
-        themeKey={themeKey} 
-        quality={quality} 
-        audioDataRef={audio.audioDataRef} 
-        preset={preset}
-        onThemeChange={setThemeKey} 
-        onQualityChange={handleQualityChange} 
-        onPresetChange={handlePresetChange}
-      />
-      
+      <div className={`transition-opacity duration-500 ${isUIVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+        <StatusPanel
+          themeKey={themeKey}
+          audioStatus={audio.audioStatus}
+          audioDataRef={audio.audioDataRef}
+          isPlaying={audio.isPlaying}
+        />
+
+        <ThemeSelector
+          themeKey={themeKey}
+          quality={quality}
+          audioDataRef={audio.audioDataRef}
+          preset={preset}
+          onThemeChange={setThemeKey}
+          onQualityChange={handleQualityChange}
+          onPresetChange={handlePresetChange}
+        />
+      </div>
+
       <ControlPanel 
         sourceType={audio.sourceType}
         isPlaying={audio.isPlaying}
@@ -87,6 +98,7 @@ export default function App() {
         onRadioSelect={audio.activateRadio}
         onTogglePlay={audio.togglePlay}
         onReset={handleReset}
+        isUIVisible={isUIVisible}
       />
 
       {/* CRT Scanline overlay */}

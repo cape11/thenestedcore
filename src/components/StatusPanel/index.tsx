@@ -58,7 +58,7 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({ themeKey, audioStatus,
     else if (isPlaying) statusColor = 'bg-green-500';
 
     return (
-        <div className="absolute top-8 left-8 z-20 pointer-events-none select-none flex flex-col gap-4 font-mono">
+        <div className="absolute top-4 left-4 md:top-8 md:left-8 z-20 pointer-events-none select-none flex flex-col gap-4 font-mono">
             {/* Scanline Overlay specific to panel */}
             <div className="absolute inset-0 bg-[linear-gradient(transparent_50%,rgba(0,0,0,0.25)_50%)] bg-[length:100%_4px] pointer-events-none opacity-50 mix-blend-overlay" />
             
@@ -71,15 +71,15 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({ themeKey, audioStatus,
                 />
                 
                 <div className="flex flex-col">
-                    <p className="text-[10px] tracking-[0.5em] text-white/50 uppercase font-bold mb-1">
+                    <p className="text-[8px] md:text-[10px] tracking-[0.5em] text-white/50 uppercase font-bold mb-1">
                         System // {theme.name.toUpperCase()}
                     </p>
-                    <h1 className="text-2xl font-light tracking-[0.3em] text-white/90 uppercase border-b border-white/10 pb-2 mb-2 w-64"
+                    <h1 className="text-xl md:text-2xl font-light tracking-[0.3em] text-white/90 uppercase border-b border-white/10 pb-2 mb-2 w-48 md:w-64"
                         style={{ textShadow: `0 0 10px ${themeColorStr}40` }}>
                         Data Terminal
                     </h1>
 
-                    <div className="flex items-center gap-2 mb-3">
+                    <div className="flex items-center gap-2 mb-3 max-w-[12rem] md:max-w-none">
                         <div className={`w-1.5 h-1.5 rounded-full ${statusColor}`} 
                              style={{ boxShadow: isPlaying ? `0 0 8px ${statusColor}` : 'none' }} />
                         <p className="text-[10px] tracking-[0.2em] text-white/60 uppercase">
@@ -88,7 +88,7 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({ themeKey, audioStatus,
                     </div>
 
                     {/* Industrial VU Meter */}
-                    <div ref={vuMeterRef} className="flex gap-[2px] w-64 h-2">
+                    <div ref={vuMeterRef} className="flex gap-[2px] w-48 md:w-64 h-2">
                         {Array.from({ length: 20 }).map((_, i) => (
                             <div key={i} className="flex-1 transition-all duration-75" />
                         ))}

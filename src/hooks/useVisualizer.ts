@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { THEMES, QUALITY_PARTICLE_LIMITS } from '../constants/themes';
@@ -530,9 +530,13 @@ export const useVisualizer = ({
             if (currentPaletteRef.current.length !== activeTheme.palette.length) {
                 currentPaletteRef.current = activeTheme.palette.map(hex => new THREE.Color(hex));
             } else {
+                // only update dynamic palette every N frames if we really need it to animate smoothly between themes
+                // this also caches the lerping
                 activeTheme.palette.forEach((hex, idx) => {
                     targetColor.setHex(hex);
-                    currentPaletteRef.current[idx].lerp(targetColor, 0.05);
+                    if (currentPaletteRef.current[idx].getHex() !== hex) {
+                        currentPaletteRef.current[idx].lerp(targetColor, 0.05);
+                    }
                 });
             }
             const dynamicPalette = currentPaletteRef.current;
@@ -540,7 +544,9 @@ export const useVisualizer = ({
 
             if (sceneRef.current.fog instanceof THREE.FogExp2) {
                 targetColor.setHex(activeTheme.accent);
-                sceneRef.current.fog.color.lerp(targetColor, 0.05);
+                if (sceneRef.current.fog.color.getHex() !== activeTheme.accent) {
+                    sceneRef.current.fog.color.lerp(targetColor, 0.05);
+                }
             }
 
             const { bass: sBass, treble: sTreble, amplitude: sAmp } = audioDataRef.current;
@@ -549,14 +555,19 @@ export const useVisualizer = ({
 
             if (cameraRef.current) {
                 const targetFov = 40 + (sBass * 15 * br);
-                cameraRef.current.fov += (targetFov - cameraRef.current.fov) * 0.1;
-                cameraRef.current.updateProjectionMatrix();
+                if (Math.abs(cameraRef.current.fov - targetFov) > 0.1) {
+                    cameraRef.current.fov += (targetFov - cameraRef.current.fov) * 0.1;
+                    cameraRef.current.updateProjectionMatrix();
+                }
             }
 
-            lightsRef.current.blueBeam.color.lerp(targetColor.setHex(activeTheme.accent), 0.05);
-            lightsRef.current.blueBeamBack.color.lerp(targetColor.setHex(activeTheme.accent), 0.05);
-            lightsRef.current.blueFill.color.lerp(targetColor.setHex(activeTheme.accent), 0.05);
-            lightsRef.current.blueFill2.color.lerp(targetColor.setHex(activeTheme.accent), 0.05);
+            targetColor.setHex(activeTheme.accent);
+            if (lightsRef.current.blueBeam.color.getHex() !== activeTheme.accent) {
+                lightsRef.current.blueBeam.color.lerp(targetColor, 0.05);
+                lightsRef.current.blueBeamBack.color.lerp(targetColor, 0.05);
+                lightsRef.current.blueFill.color.lerp(targetColor, 0.05);
+                lightsRef.current.blueFill2.color.lerp(targetColor, 0.05);
+            }
 
             if (coreGroupRef.current) {
                 coreGroupRef.current.rotation.y = time * (0.2 * rs) + (sBass * 0.3 * br);
@@ -575,38 +586,48 @@ export const useVisualizer = ({
                 outerIcoRef.current.scale.setScalar(heartbeatRef.current);
             }
 
+            const edgeThickness = Math.min(1.5, 1.0 + (sBass * 0.8 * br));
+            const edgeEmissive = 0.1 + (sTreble * 0.8);
             edgeCylindersRef.current.forEach(cyl => {
-                const thickness = Math.min(1.5, 1.0 + (sBass * 0.8 * br));
-                cyl.mesh.scale.set(thickness, 1.0, thickness);
-                cyl.mesh.material.emissiveIntensity = 0.1 + (sTreble * 0.8);
+                cyl.mesh.scale.set(edgeThickness, 1.0, edgeThickness);
+                cyl.mesh.material.emissiveIntensity = edgeEmissive;
             });
 
-            vertexSpritesRef.current.forEach((v, i) => {
-                const flicker = Math.sin(time * 2 + i * 0.8) * 0.1 + 0.9;
-                const sizeMulti = 1.0 + (sBass * 0.3 * br) + (sTreble * 0.1);
-                const intensityMulti = Math.min(1.5, 1.0 + (sTreble * 0.8) + (sBass * 0.4 * br));
+            const sizeMulti = 1.0 + (sBass * 0.3 * br) + (sTreble * 0.1);
+            const intensityMulti = Math.min(1.5, 1.0 + (sTreble * 0.8) + (sBass * 0.4 * br));
+            targetColor.setHex(activeTheme.glow);
 
-                if (coreGroupRef.current && cameraRef.current) {
-                    tempNormal.copy(v.basePos).normalize().applyEuler(coreGroupRef.current.rotation);
+            if (coreGroupRef.current && cameraRef.current) {
+                const coreRot = coreGroupRef.current.rotation;
+                const camPos = cameraRef.current.position;
+
+                vertexSpritesRef.current.forEach((v, i) => {
+                    const flicker = Math.sin(time * 2 + i * 0.8) * 0.1 + 0.9;
+                    tempNormal.copy(v.basePos).normalize().applyEuler(coreRot);
                     v.mesh.getWorldPosition(tempPos);
-                    tempView.copy(cameraRef.current.position).sub(tempPos).normalize();
+                    tempView.copy(camPos).sub(tempPos).normalize();
                     let dot = tempNormal.dot(tempView);
                     let visibility = THREE.MathUtils.smoothstep(dot, -0.6, 0.0);
 
                     v.mesh.material.opacity = Math.min(1.0, 0.7 + (sTreble * 0.2)) * flicker * visibility;
                     v.mesh.scale.setScalar(0.22 * sizeMulti);
-                    v.mesh.material.color.lerp(targetColor.setHex(activeTheme.glow), 0.05);
+
+                    if (v.mesh.material.color.getHex() !== activeTheme.glow) {
+                        v.mesh.material.color.lerp(targetColor, 0.05);
+                    }
 
                     v.coreMesh.scale.setScalar(0.07 + (sTreble * 0.04));
                     v.coreMesh.material.opacity = (0.5 + (sTreble * 0.4) * flicker) * visibility;
 
                     if (v.light) {
                         v.light.intensity = 1.0 * intensityMulti * flicker * presetRef.current.glowIntensity;
-                        v.light.color.lerp(targetColor.setHex(activeTheme.glow), 0.05);
+                        if (v.light.color.getHex() !== activeTheme.glow) {
+                            v.light.color.lerp(targetColor, 0.05);
+                        }
                     }
                     v.mesh.position.copy(v.basePos);
-                }
-            });
+                });
+            }
 
             if (particlesRef.current) {
                 const positions = particlesRef.current.geometry.attributes.position.array as Float32Array;
@@ -795,8 +816,13 @@ export const useVisualizer = ({
                         }
                     }
                 }
-                particlesRef.current.geometry.attributes.position.needsUpdate = true;
-                particlesRef.current.geometry.attributes.color.needsUpdate = true;
+                const activeRange = limit * 6;
+                if (activeRange > 0) {
+                    particlesRef.current.geometry.attributes.position.updateRange = { offset: 0, count: activeRange };
+                    particlesRef.current.geometry.attributes.color.updateRange = { offset: 0, count: activeRange };
+                    particlesRef.current.geometry.attributes.position.needsUpdate = true;
+                    particlesRef.current.geometry.attributes.color.needsUpdate = true;
+                }
             }
 
             if (!autoQualityChecked && onAutoQualityChange) {
