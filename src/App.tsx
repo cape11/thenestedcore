@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, startTransition } from 'react';
 import { ThemeKey, Quality } from './types';
 import { THEMES, DEFAULT_THEME_KEY, DEFAULT_QUALITY } from './constants/themes';
 import { useAudioEngine } from './hooks/useAudioEngine';
@@ -27,18 +27,30 @@ export default function App() {
   });
 
   const handleQualityChange = () => {
-    setQuality(prev => 
-      prev === 'HIGH' ? 'LOW' : 
-      prev === 'LOW' ? 'ULTRA_LOW' : 
-      'HIGH'
-    );
+    startTransition(() => {
+        setQuality(prev =>
+            prev === 'HIGH' ? 'LOW' :
+            prev === 'LOW' ? 'ULTRA_LOW' :
+            'HIGH'
+        );
+    });
   };
 
+  const saveTimeoutRef = useRef<number | null>(null);
+
   const handlePresetChange = (key: keyof AnimationPreset, value: number) => {
-    setPreset(prev => {
-        const next = { ...prev, [key]: value };
-        savePreset(next);
-        return next;
+    startTransition(() => {
+        setPreset(prev => {
+            const next = { ...prev, [key]: value };
+
+            // Debounce local storage writes (I/O spikes)
+            if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
+            saveTimeoutRef.current = window.setTimeout(() => {
+                savePreset(next);
+            }, 500);
+
+            return next;
+        });
     });
   };
 
@@ -60,7 +72,7 @@ export default function App() {
 
       {/* Toggle UI Button */}
       <button
-        onClick={() => setIsUIVisible(!isUIVisible)}
+        onClick={() => startTransition(() => setIsUIVisible(!isUIVisible))}
         className="absolute top-4 right-4 md:top-8 md:right-8 z-50 px-3 py-1.5 md:px-4 md:py-2 text-[8px] md:text-[9px] uppercase tracking-[0.3em] border border-white/10 bg-black/40 text-white/50 hover:border-white/40 hover:text-white backdrop-blur-md transition-all duration-300 pointer-events-auto"
       >
         {isUIVisible ? '[ HIDE UI ]' : '[ SHOW UI ]'}

@@ -33,34 +33,47 @@ const CURL_WORLD_MIN = -15.0;
 const CURL_WORLD_MAX =  15.0;
 const CURL_WORLD_RANGE = CURL_WORLD_MAX - CURL_WORLD_MIN;
 
-const updateCurlGrid = (t: number, turbulence: number) => {
+let curlGridOffset = 0;
+
+const updateCurlGridChunked = (t: number, turbulence: number, chunkCount: number) => {
     const scale = 0.35 + (turbulence * 0.15);
     const ts = t * 0.12;
     const eps = 0.1;
 
-    for (let xi = 0; xi < CURL_GRID_SIZE; xi++) {
-        for (let yi = 0; yi < CURL_GRID_SIZE; yi++) {
-            for (let zi = 0; zi < CURL_GRID_SIZE; zi++) {
-                const wx = CURL_WORLD_MIN + (xi / (CURL_GRID_SIZE - 1)) * CURL_WORLD_RANGE;
-                const wy = CURL_WORLD_MIN + (yi / (CURL_GRID_SIZE - 1)) * CURL_WORLD_RANGE;
-                const wz = CURL_WORLD_MIN + (zi / (CURL_GRID_SIZE - 1)) * CURL_WORLD_RANGE;
+    const totalCells = CURL_GRID_TOTAL;
+    const cellsPerChunk = Math.ceil(totalCells / chunkCount);
 
-                const sx = wx * scale, sy = wy * scale, sz = wz * scale;
+    const startCell = curlGridOffset;
+    let endCell = startCell + cellsPerChunk;
+    if (endCell >= totalCells) endCell = totalCells;
 
-                const dFy_dz = (snoise(sx, sy, sz + eps + ts) - snoise(sx, sy, sz - eps + ts)) / (2 * eps);
-                const dFz_dy = (snoise(sx, sy + eps, sz + ts) - snoise(sx, sy - eps, sz + ts)) / (2 * eps);
-                const dFz_dx = (snoise(sx + eps, sy, sz + ts) - snoise(sx - eps, sy, sz + ts)) / (2 * eps);
-                const dFx_dz = (snoise(sx, sy, sz + eps + ts) - snoise(sx, sy, sz - eps + ts)) / (2 * eps);
-                const dFx_dy = (snoise(sx, sy + eps, sz + ts) - snoise(sx, sy - eps, sz + ts)) / (2 * eps);
-                const dFy_dx = (snoise(sx + eps, sy, sz + ts) - snoise(sx - eps, sy, sz + ts)) / (2 * eps);
+    for (let c = startCell; c < endCell; c++) {
+        let temp = c;
+        const zi = temp % CURL_GRID_SIZE;
+        temp = Math.floor(temp / CURL_GRID_SIZE);
+        const yi = temp % CURL_GRID_SIZE;
+        const xi = Math.floor(temp / CURL_GRID_SIZE);
 
-                const idx = (xi * CURL_GRID_SIZE * CURL_GRID_SIZE + yi * CURL_GRID_SIZE + zi) * 3;
-                curlGridBuffer[idx]     = dFy_dz - dFz_dy;
-                curlGridBuffer[idx + 1] = dFz_dx - dFx_dz;
-                curlGridBuffer[idx + 2] = dFx_dy - dFy_dx;
-            }
-        }
+        const wx = CURL_WORLD_MIN + (xi / (CURL_GRID_SIZE - 1)) * CURL_WORLD_RANGE;
+        const wy = CURL_WORLD_MIN + (yi / (CURL_GRID_SIZE - 1)) * CURL_WORLD_RANGE;
+        const wz = CURL_WORLD_MIN + (zi / (CURL_GRID_SIZE - 1)) * CURL_WORLD_RANGE;
+
+        const sx = wx * scale, sy = wy * scale, sz = wz * scale;
+
+        const dFy_dz = (snoise(sx, sy, sz + eps + ts) - snoise(sx, sy, sz - eps + ts)) / (2 * eps);
+        const dFz_dy = (snoise(sx, sy + eps, sz + ts) - snoise(sx, sy - eps, sz + ts)) / (2 * eps);
+        const dFz_dx = (snoise(sx + eps, sy, sz + ts) - snoise(sx - eps, sy, sz + ts)) / (2 * eps);
+        const dFx_dz = (snoise(sx, sy, sz + eps + ts) - snoise(sx, sy, sz - eps + ts)) / (2 * eps);
+        const dFx_dy = (snoise(sx, sy + eps, sz + ts) - snoise(sx, sy - eps, sz + ts)) / (2 * eps);
+        const dFy_dx = (snoise(sx + eps, sy, sz + ts) - snoise(sx - eps, sy, sz + ts)) / (2 * eps);
+
+        const idx = c * 3;
+        curlGridBuffer[idx]     = dFy_dz - dFz_dy;
+        curlGridBuffer[idx + 1] = dFz_dx - dFx_dz;
+        curlGridBuffer[idx + 2] = dFx_dy - dFy_dx;
     }
+
+    curlGridOffset = endCell === totalCells ? 0 : endCell;
 };
 
 // OPTIMIZATION 1: Pass an 'out' object to prevent garbage collection spikes (no more 15,000 objects generated per frame)
@@ -668,10 +681,13 @@ export const useVisualizer = ({
 
                 const turbulence = presetRef.current.turbulence ?? 0.3;
                 frameCounter++;
-                const updateFreq = qualityRef.current === 'HIGH' ? 2 : qualityRef.current === 'LOW' ? 4 : 6;
-                if (frameCounter % updateFreq === 0) {
-                    updateCurlGrid(time, turbulence);
-                }
+                // Instead of completely skipping frames and blocking hard on the 4th frame,
+                // we chunk the curl grid update across every frame.
+                // HIGH -> finishes full grid in 2 frames (2048 cells/frame)
+                // LOW -> finishes full grid in 4 frames (1024 cells/frame)
+                // ULTRA_LOW -> finishes full grid in 8 frames (512 cells/frame)
+                const chunkCount = qualityRef.current === 'HIGH' ? 2 : qualityRef.current === 'LOW' ? 4 : 8;
+                updateCurlGridChunked(time, turbulence, chunkCount);
 
                 // Slightly boosted minimums to ensure HIGH preset feels fully populated, scale down spawn rates on lower
                 let spawnMultiplier = qualityRef.current === 'ULTRA_LOW' ? 0.3 : qualityRef.current === 'LOW' ? 0.6 : 1.0;
