@@ -13,8 +13,9 @@ export const useAudioEngine = () => {
     const [isPlaying, setIsPlaying] = useState(false);
     const [sourceType, setSourceType] = useState<AudioSourceType>('none');
     const [activeStation, setActiveStation] = useState<RadioStation | null>(null);
-    
-    // Use Ref instead of state for high-frequency data
+    const [currentSong, setCurrentSong] = useState<{ artist: string, title: string } | null>(null);
+    const [isConnecting, setIsConnecting] = useState(false);
+
     const audioDataRef = useRef<AudioData>({ bass: 0, treble: 0, amplitude: 0, dataArray: null });
 
     const audioCtxRef = useRef<AudioContext | null>(null);
@@ -27,10 +28,45 @@ export const useAudioEngine = () => {
     const isPlayingRef = useRef(false);
     const animationFrameId = useRef<number | null>(null);
     const radioElementRef = useRef<HTMLAudioElement | null>(null);
+    const pollIntervalRef = useRef<number | null>(null);
 
     useEffect(() => {
         isPlayingRef.current = isPlaying;
     }, [isPlaying]);
+
+    const stopPolling = useCallback(() => {
+        if (pollIntervalRef.current) {
+            window.clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+        }
+        setCurrentSong(null);
+    }, []);
+
+    const startPolling = useCallback((stationId: string) => {
+        stopPolling();
+
+        const fetchMetadata = async () => {
+            try {
+                const res = await fetch(`https://somafm.com/songs/${stationId}.json`);
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data && data.songs && data.songs.length > 0) {
+                    const song = data.songs[0];
+                    setCurrentSong({ artist: song.artist, title: song.title });
+                }
+            } catch (err) {
+                console.error("Failed to fetch song metadata", err);
+            }
+        };
+
+        fetchMetadata(); // Fetch immediately
+        // Poll every 15 seconds
+        pollIntervalRef.current = window.setInterval(fetchMetadata, 15000);
+    }, [stopPolling]);
+
+    useEffect(() => {
+        return () => stopPolling();
+    }, [stopPolling]);
 
     const initAudio = () => {
         if (!audioCtxRef.current) {
@@ -84,7 +120,7 @@ export const useAudioEngine = () => {
 
             animationFrameId.current = requestAnimationFrame(tick);
         };
-        
+
         if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
         animationFrameId.current = requestAnimationFrame(tick);
     }, []);
@@ -97,6 +133,7 @@ export const useAudioEngine = () => {
     }, [startTickLoop]);
 
     const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        stopPolling();
         const file = e.target.files?.[0];
         if (!file) return;
 
@@ -120,9 +157,10 @@ export const useAudioEngine = () => {
             setAudioStatus('AUDIO FILE SYNCED');
         };
         reader.readAsArrayBuffer(file);
-    }, []);
+    }, [stopPolling]);
 
     const activateMic = useCallback(async () => {
+        stopPolling();
         try {
             initAudio();
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -138,9 +176,10 @@ export const useAudioEngine = () => {
         } catch (err) {
             setAudioStatus('ERROR: MIC ACCESS DENIED');
         }
-    }, []);
+    }, [stopPolling]);
 
     const activateSystemAudio = useCallback(async () => {
+        stopPolling();
         try {
             initAudio();
             const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
@@ -162,20 +201,19 @@ export const useAudioEngine = () => {
         } catch (err: any) {
             setAudioStatus(`ERROR: ${err.message.toUpperCase()}`);
         }
-    }, []);
+    }, [stopPolling]);
 
     const activateRadio = useCallback(async (station: RadioStation) => {
         try {
             initAudio();
+            setIsConnecting(true);
+            setAudioStatus('CONNECTING TO STREAM...');
 
-            // Limpiar fuente anterior
             if (radioElementRef.current) {
                 radioElementRef.current.pause();
                 radioElementRef.current.src = '';
             }
             if (sourceRef.current) sourceRef.current.disconnect();
-
-            setAudioStatus('CONNECTING TO STREAM...');
 
             const audio = new Audio();
             audio.crossOrigin = 'anonymous';
@@ -193,12 +231,17 @@ export const useAudioEngine = () => {
             setSourceType('radio');
             setActiveStation(station);
             setIsPlaying(true);
+            setIsConnecting(false);
             setAudioStatus(`STREAM: ${station.name.toUpperCase()}`);
+
+            startPolling(station.id);
         } catch (err: any) {
+            setIsConnecting(false);
             setAudioStatus(`ERROR: STREAM UNAVAILABLE`);
             setSourceType('none');
+            stopPolling();
         }
-    }, []);
+    }, [startPolling, stopPolling]);
 
     const togglePlay = useCallback(() => {
         if (!audioCtxRef.current) return;
@@ -213,9 +256,9 @@ export const useAudioEngine = () => {
             setIsPlaying(true);
             setAudioStatus(
                 sourceType === 'mic' ? 'MIC SENSOR ACTIVE' :
-                sourceType === 'system' ? 'PC AUDIO LINKED' :
-                sourceType === 'radio' ? `STREAM: ${activeStation?.name.toUpperCase()}` :
-                'AUDIO FILE SYNCED'
+                    sourceType === 'system' ? 'PC AUDIO LINKED' :
+                        sourceType === 'radio' ? `STREAM: ${activeStation?.name.toUpperCase()}` :
+                            'AUDIO FILE SYNCED'
             );
         }
     }, [isPlaying, sourceType, activeStation]);
@@ -223,9 +266,11 @@ export const useAudioEngine = () => {
     return {
         audioStatus,
         isPlaying,
+        isConnecting,
         sourceType,
         audioDataRef,
         activeStation,
+        currentSong,
         handleFileUpload,
         activateMic,
         activateSystemAudio,

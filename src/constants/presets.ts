@@ -4,6 +4,9 @@ export interface AnimationPreset {
     particleDensity: number;  // multiplier sobre maxSpawnRate — default 1.0
     glowIntensity: number;    // multiplier sobre vertex light intensity — default 1.0
     turbulence: number;       // 0.0 = flujo puro tipo agua, 1.0 = más caótico — default 0.3
+    particleSpeed: number;    // NEW: Velocity multiplier
+    particleTrail: number;    // NEW: Length of the segment tail
+    particleLife: number;     // NEW: Lifespan multiplier
 }
 
 export const DEFAULT_PRESET: AnimationPreset = {
@@ -12,6 +15,9 @@ export const DEFAULT_PRESET: AnimationPreset = {
     particleDensity: 1.0,
     glowIntensity: 1.0,
     turbulence: 0.3,
+    particleSpeed: 1.0,
+    particleTrail: 1.0,
+    particleLife: 1.0,
 };
 
 export const PRESET_STORAGE_KEY = 'nested-core-preset';

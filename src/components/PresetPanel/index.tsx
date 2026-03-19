@@ -11,10 +11,13 @@ interface PresetPanelProps {
 
 const SLIDERS: { key: keyof AnimationPreset; label: string; min: number; max: number; step: number }[] = [
     { key: 'rotationSpeed',   label: 'Rotation',  min: 0, max: 2,   step: 0.05 },
-    { key: 'bassResponse',    label: 'Bass',       min: 0, max: 3,   step: 0.05 },
-    { key: 'particleDensity', label: 'Particles',  min: 0, max: 2,   step: 0.05 },
-    { key: 'glowIntensity',   label: 'Glow',       min: 0, max: 2,   step: 0.05 },
-    { key: 'turbulence',      label: 'Turbulence', min: 0, max: 1,   step: 0.05 },
+    { key: 'bassResponse',    label: 'Bass Resp', min: 0, max: 3,   step: 0.05 },
+    { key: 'particleDensity', label: 'Density',   min: 0, max: 2,   step: 0.05 },
+    { key: 'particleSpeed',   label: 'P. Speed',  min: 0.1, max: 3, step: 0.05 },
+    { key: 'particleTrail',   label: 'P. Trail',  min: 0.1, max: 4, step: 0.05 },
+    { key: 'particleLife',    label: 'P. Life',   min: 0.2, max: 3, step: 0.05 },
+    { key: 'glowIntensity',   label: 'Glow',      min: 0, max: 2,   step: 0.05 },
+    { key: 'turbulence',      label: 'Turbulence',min: 0, max: 1,   step: 0.05 },
 ];
 
 export const PresetPanel: React.FC<PresetPanelProps> = ({ themeKey, preset, onPresetChange }) => {

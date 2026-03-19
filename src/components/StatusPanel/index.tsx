@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { THEMES } from '../../constants/themes';
 import { ThemeKey, AudioData } from '../../types';
+import { RadioStation } from '../../constants/radio';
 
 interface StatusPanelProps {
     themeKey: ThemeKey;
@@ -8,9 +9,19 @@ interface StatusPanelProps {
     audioDataRef: React.MutableRefObject<AudioData>;
     isPlaying: boolean;
     isUIVisible: boolean;
+    activeStation?: RadioStation | null;
+    currentSong?: { artist: string; title: string } | null;
 }
 
-export const StatusPanel: React.FC<StatusPanelProps> = ({ themeKey, audioStatus, audioDataRef, isPlaying, isUIVisible }) => {
+export const StatusPanel: React.FC<StatusPanelProps> = ({
+                                                            themeKey,
+                                                            audioStatus,
+                                                            audioDataRef,
+                                                            isPlaying,
+                                                            isUIVisible,
+                                                            activeStation,
+                                                            currentSong
+                                                        }) => {
     const theme = THEMES[themeKey];
     const themeColorStr = `#${theme.glow.toString(16).padStart(6, '0')}`;
 
@@ -21,7 +32,7 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({ themeKey, audioStatus,
     useEffect(() => {
         const segments = 20;
         let frameCount = 0;
-        
+
         const updateUI = () => {
             animationFrameId.current = requestAnimationFrame(updateUI);
 
@@ -32,13 +43,11 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({ themeKey, audioStatus,
 
             if (!signalRef.current || !vuMeterRef.current) return;
             const data = audioDataRef.current;
-            
-            // Update signal
+
             signalRef.current.style.opacity = (0.5 + data.bass * 0.5).toString();
             signalRef.current.style.boxShadow = `0 0 ${10 + data.bass * 20}px ${themeColorStr}`;
             signalRef.current.style.transform = `scaleY(${0.8 + data.bass * 0.4})`;
-            
-            // Update VU meter
+
             const activeSegments = Math.floor(data.amplitude * segments);
             const children = vuMeterRef.current.children;
             for (let i = 0; i < children.length; i++) {
@@ -52,9 +61,9 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({ themeKey, audioStatus,
                 }
             }
         };
-        
+
         animationFrameId.current = requestAnimationFrame(updateUI);
-        
+
         return () => {
             if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
         };
@@ -66,35 +75,43 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({ themeKey, audioStatus,
 
     return (
         <div className="absolute top-4 left-4 md:top-8 md:left-8 z-20 pointer-events-none select-none flex flex-col gap-4 font-mono">
-            {/* Scanline Overlay specific to panel */}
             <div className="absolute inset-0 bg-[linear-gradient(transparent_50%,rgba(0,0,0,0.25)_50%)] bg-[length:100%_4px] pointer-events-none opacity-50 mix-blend-overlay" />
-            
+
             <div className="flex items-start gap-4">
-                {/* Signal Indicator */}
-                <div 
+                <div
                     ref={signalRef}
-                    className="w-2 h-12 transition-all duration-75"
-                    style={{ backgroundColor: themeColorStr }} 
+                    className="w-2 h-12 transition-all duration-75 mt-1"
+                    style={{ backgroundColor: themeColorStr }}
                 />
-                
+
                 <div className="flex flex-col">
                     <p className="text-[8px] md:text-[10px] tracking-[0.5em] text-white/50 uppercase font-bold mb-1">
                         System // {theme.name.toUpperCase()}
                     </p>
-                    <h1 className="text-xl md:text-2xl font-light tracking-[0.3em] text-white/90 uppercase border-b border-white/10 pb-2 mb-2 w-48 md:w-64"
-                        style={{ textShadow: `0 0 10px ${themeColorStr}40` }}>
-                        Data Terminal
+                    <h1 className="text-xl md:text-2xl font-light tracking-[0.3em] text-white/90 uppercase border-b border-white/10 pb-2 mb-2 w-48 md:w-64 overflow-hidden text-ellipsis whitespace-nowrap"
+                        style={{ textShadow: `0 0 10px ${themeColorStr}40` }}
+                        title={activeStation ? activeStation.name : 'Data Terminal'}
+                    >
+                        {activeStation ? activeStation.name : 'Data Terminal'}
                     </h1>
 
-                    <div className="flex items-center gap-2 mb-3 max-w-[12rem] md:max-w-none">
-                        <div className={`w-1.5 h-1.5 rounded-full ${statusColor}`} 
-                             style={{ boxShadow: isPlaying ? `0 0 8px ${statusColor}` : 'none' }} />
-                        <p className="text-[10px] tracking-[0.2em] text-white/60 uppercase">
-                            {audioStatus}
-                        </p>
-                    </div>
+                    {currentSong && activeStation && isPlaying && (
+                        <div className="flex flex-col mb-3 max-w-48 md:max-w-64 border-l-2 pl-3 py-1 bg-white/[0.02]" style={{ borderColor: themeColorStr }}>
+                            <p className="text-[11px] md:text-xs text-white/90 font-bold truncate tracking-widest uppercase" title={currentSong.title}>{currentSong.title}</p>
+                            <p className="text-[9px] text-white/50 truncate tracking-[0.2em] uppercase mt-0.5" title={currentSong.artist}>{currentSong.artist}</p>
+                        </div>
+                    )}
 
-                    {/* Industrial VU Meter */}
+                    {!currentSong && (
+                        <div className="flex items-center gap-2 mb-3 max-w-[12rem] md:max-w-none">
+                            <div className={`w-1.5 h-1.5 rounded-full ${statusColor}`}
+                                 style={{ boxShadow: isPlaying ? `0 0 8px ${statusColor}` : 'none' }} />
+                            <p className="text-[10px] tracking-[0.2em] text-white/60 uppercase truncate">
+                                {audioStatus}
+                            </p>
+                        </div>
+                    )}
+
                     <div ref={vuMeterRef} className="flex gap-[2px] w-48 md:w-64 h-2">
                         {Array.from({ length: 20 }).map((_, i) => (
                             <div key={i} className="flex-1 transition-all duration-75" />

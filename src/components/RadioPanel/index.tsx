@@ -12,17 +12,17 @@ interface RadioPanelProps {
 }
 
 export const RadioPanel: React.FC<RadioPanelProps> = ({
-    themeKey,
-    activeStationId,
-    isConnecting,
-    onSelectStation
-}) => {
+                                                          themeKey,
+                                                          activeStationId,
+                                                          isConnecting,
+                                                          onSelectStation
+                                                      }) => {
     const [open, setOpen] = useState(false);
     const theme = THEMES[themeKey];
     const themeColorStr = `#${theme.glow.toString(16).padStart(6, '0')}`;
 
     return (
-        <div className="relative">
+        <div className="relative pointer-events-auto">
             <button
                 onClick={() => setOpen(o => !o)}
                 className="flex flex-col items-center gap-3 group"
@@ -43,34 +43,43 @@ export const RadioPanel: React.FC<RadioPanelProps> = ({
             </button>
 
             {open && (
-                <div className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 w-56 bg-black/80 border border-white/10 backdrop-blur-md flex flex-col z-30">
-                    <p className="text-[8px] uppercase tracking-[0.4em] text-white/30 px-3 pt-3 pb-2 border-b border-white/10">
-                        Live Streams
-                    </p>
-                    {RADIO_STATIONS.map(station => (
-                        <button
-                            key={station.id}
-                            onClick={() => { onSelectStation(station); setOpen(false); }}
-                            className={`flex flex-col px-3 py-2.5 text-left transition-all duration-200 border-b border-white/5 last:border-0 hover:bg-white/5 ${
-                                activeStationId === station.id ? 'bg-white/5' : ''
-                            }`}
-                        >
-                            <div className="flex items-center justify-between w-full">
-                                <span className="text-[10px] uppercase tracking-widest text-white/80">
-                                    {station.name}
+                <div className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 w-64 bg-black/80 border border-white/10 backdrop-blur-md flex flex-col z-30 max-h-[350px] overflow-hidden rounded-t-sm shadow-2xl">
+                    <div className="p-3 border-b border-white/10 bg-black/40 flex justify-between items-center sticky top-0 z-10">
+                        <span className="text-[9px] uppercase tracking-[0.4em] text-white/50 font-bold">
+                            Live Streams
+                        </span>
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: themeColorStr, boxShadow: `0 0 8px ${themeColorStr}` }} />
+                    </div>
+
+                    <div className="flex flex-col overflow-y-auto custom-scrollbar p-1" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.2) transparent' }}>
+                        {RADIO_STATIONS.map(station => (
+                            <button
+                                key={station.id}
+                                onClick={() => { onSelectStation(station); setOpen(false); }}
+                                className={`flex flex-col px-3 py-3 text-left transition-all duration-200 border border-transparent rounded-sm mb-1 last:mb-0 ${
+                                    activeStationId === station.id
+                                        ? 'bg-white/10 border-white/20'
+                                        : 'hover:bg-white/5 hover:border-white/10'
+                                }`}
+                            >
+                                <div className="flex items-center justify-between w-full">
+                                    <span className="text-[10px] uppercase tracking-widest text-white/90 font-bold">
+                                        {station.name}
+                                    </span>
+                                    {activeStationId === station.id && (
+                                        <div className="flex gap-1 items-center ml-2">
+                                            <div className="w-1 h-2 animate-[pulse_1s_ease-in-out_infinite]" style={{ backgroundColor: themeColorStr }} />
+                                            <div className="w-1 h-3 animate-[pulse_1.2s_ease-in-out_infinite]" style={{ backgroundColor: themeColorStr }} />
+                                            <div className="w-1 h-1.5 animate-[pulse_0.8s_ease-in-out_infinite]" style={{ backgroundColor: themeColorStr }} />
+                                        </div>
+                                    )}
+                                </div>
+                                <span className="text-[8px] tracking-[0.2em] text-white/40 mt-1 uppercase">
+                                    {station.genre}
                                 </span>
-                                {activeStationId === station.id && (
-                                    <div
-                                        className="w-1.5 h-1.5 rounded-full animate-pulse flex-shrink-0 ml-2"
-                                        style={{ backgroundColor: themeColorStr }}
-                                    />
-                                )}
-                            </div>
-                            <span className="text-[8px] tracking-wider text-white/30 mt-0.5">
-                                {station.genre}
-                            </span>
-                        </button>
-                    ))}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             )}
         </div>
