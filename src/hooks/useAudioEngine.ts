@@ -198,8 +198,8 @@ export const useAudioEngine = () => {
                 setIsPlaying(false);
                 setAudioStatus('AWAITING AUDIO STREAM');
             };
-        } catch (err: any) {
-            setAudioStatus(`ERROR: ${err.message.toUpperCase()}`);
+        } catch (err) {
+            setAudioStatus('ERROR: SYSTEM AUDIO UNAVAILABLE');
         }
     }, [stopPolling]);
 
