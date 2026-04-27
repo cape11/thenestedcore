@@ -340,7 +340,7 @@ function initScene(
 
 // ---------------------------------------------------------------------------
 
-function initBackground(scene: THREE.Scene, theme: typeof THEMES[keyof typeof THEMES]): BackgroundObjects {
+function initBackground(scene: THREE.Scene, _theme: typeof THEMES[keyof typeof THEMES]): BackgroundObjects {
     // Stars
     const starsGeo   = new THREE.BufferGeometry();
     const starsCount = 3000;
@@ -686,7 +686,7 @@ function initLights(scene: THREE.Scene, theme: typeof THEMES[keyof typeof THEMES
 function initParticles(
     scene:      THREE.Scene,
     quality:    Quality,
-    icoGeo:     THREE.IcosahedronGeometry,
+    _icoGeo:     THREE.IcosahedronGeometry,
 ): ParticleObjects {
     const deviceTier    = detectParticleTier();
     const tierOrder     = ['ULTRA_LOW', 'LOW', 'HIGH'] as const;
@@ -882,13 +882,20 @@ export const useVisualizer = ({
 
         // ── Animation loop ────────────────────────────────────────────────
         const animate = () => {
+            animationFrameId = requestAnimationFrame(animate);
             if (!renderer || !scene || !camera) return;
 
             const now = performance.now();
             fpsMonitor.record(now);
 
+            const ampPeek = audioDataRef.current?.amplitude ?? 0;
+            const isAudioActive = ampPeek > 0.08;
+
+            if (!isAudioActive && (now - lastTime) < 33) return; // Throttling when idle, keeping movement at 30 fps
+
             let dt = (now - lastTime) / 1000;
-            if (dt > 0.1) dt = 0.016;
+            if (dt > 0.1) dt = 0.016; // clamp dt to prevent huge physics jumps
+            
             lastTime = now;
             const fpsScale = dt * 60;
             const time     = now / 1000;
@@ -933,9 +940,9 @@ export const useVisualizer = ({
             const br = presetVars.bassResponse  ?? 1.0;
 
             // ── Camera FOV ─────────────────────────────────────────────────
-            const targetFov = 40 + sBass * 15 * br;
+            const targetFov = isAudioActive ? 40 + sBass * 15 * br : 40;
             if (Math.abs(camera.fov - targetFov) > 0.1) {
-                camera.fov += (targetFov - camera.fov) * 0.1;
+                camera.fov += (targetFov - camera.fov) * (isAudioActive ? 0.1 : 0.03);
                 camera.updateProjectionMatrix();
             }
 
@@ -949,8 +956,8 @@ export const useVisualizer = ({
             // ── Core group rotation ────────────────────────────────────────
             coreGroup.rotation.y = time * (0.2 * rs) + sBass * 0.3 * br;
             coreGroup.rotation.x = time * (0.1 * rs);
-            coreGroup.position.y = Math.sin(time * 0.8) * 0.15;
-            coreGroup.position.x = Math.cos(time * 0.6) * 0.08;
+            coreGroup.position.y = isAudioActive ? Math.sin(time * 0.8) * 0.15 : Math.sin(time * 0.25) * 0.015;
+            coreGroup.position.x = isAudioActive ? Math.cos(time * 0.6) * 0.08 : 0;
 
             // ── Heartbeat scale ────────────────────────────────────────────
             const bassPeak    = sBass * br;
@@ -989,7 +996,7 @@ export const useVisualizer = ({
                 v.coreMesh.material.opacity = (0.5 + sTreble * 0.4 * flicker) * vis;
 
                 if (v.light) {
-                    v.light.intensity = 1.0 * intensityMulti * flicker * presetRef.current.glowIntensity;
+                    v.light.intensity = intensityMulti * flicker * presetRef.current.glowIntensity;
                     v.light.color.lerp(_targetColor, 0.05);
                 }
 
@@ -1006,7 +1013,7 @@ export const useVisualizer = ({
             nebulaSprites.forEach((ns, i) => {
                 const pColor = dynamicPalette[i % Math.max(1, dynamicPalette.length)];
                 if (pColor) ns.mesh.material.color.lerp(pColor, 0.02);
-                ns.mesh.material.opacity = ns.baseOpacity * (1.0 + sBass * br * 0.8);
+                ns.mesh.material.opacity = ns.baseOpacity * (isAudioActive ? (1.0 + sBass * br * 0.8) : 1.0);
             });
 
             // ── Lasers ─────────────────────────────────────────────────────
@@ -1096,7 +1103,7 @@ export const useVisualizer = ({
                 });
 
                 if (matricesNeedUpdate) instancedMesh.instanceMatrix.needsUpdate = true;
-                laserCoreLines.material.opacity = maxCoreOpacity;
+                (laserCoreLines.material as THREE.LineBasicMaterial).opacity = maxCoreOpacity;
                 laserCoreLines.geometry.attributes.position.needsUpdate = true;
 
             } else {
@@ -1107,7 +1114,7 @@ export const useVisualizer = ({
                     const cPos = laserCoreLines.geometry.attributes.position.array as Float32Array;
                     for (let j = 0; j < SEGMENTS * 2 * 3; j++) cPos[baseIdx + j] = 0;
                 });
-                laserCoreLines.material.opacity = 0;
+                (laserCoreLines.material as THREE.LineBasicMaterial).opacity = 0;
                 laserCoreLines.geometry.attributes.position.needsUpdate = true;
                 instancedMesh.instanceMatrix.needsUpdate = true;
             }
@@ -1156,11 +1163,12 @@ export const useVisualizer = ({
 
                 const turbulence = presetVars.turbulence ?? 0.3;
                 const chunkCount = qualityRef.current === 'HIGH' ? 2 : qualityRef.current === 'LOW' ? 4 : 8;
-                updateCurlGridChunked(time, turbulence, chunkCount);
+                if (isAudioActive) updateCurlGridChunked(time, turbulence, chunkCount);
 
                 const spawnMul   = qualityRef.current === 'ULTRA_LOW' ? 0.35 : qualityRef.current === 'LOW' ? 0.65 : 1.0;
                 const density    = presetVars.particleDensity ?? 1.0;
-                const maxSpawn   = Math.floor(600 * density * spawnMul) + Math.floor(Math.pow(sAmp, 1.3) * 6000 * density * spawnMul);
+                const idleBase   = isAudioActive ? 600 : 50;
+                const maxSpawn   = Math.floor(idleBase * density * spawnMul) + Math.floor(Math.pow(sAmp, 1.3) * 6000 * density * spawnMul);
                 let spawned      = 0;
 
                 const ICO_R      = ICO_RADIUS * currentScale;
@@ -1363,7 +1371,7 @@ export const useVisualizer = ({
             }
 
             // ── FPS monitor — bidirectional quality adjustment ──────────────
-            if (onAutoQualityChange) {
+            if (onAutoQualityChange && isAudioActive) {
                 const suggestion = fpsMonitor.suggest(qualityRef.current);
                 if (suggestion === 'degrade') {
                     fpsMonitor.reset();
@@ -1379,7 +1387,6 @@ export const useVisualizer = ({
             }
 
             renderer.render(scene, camera);
-            animationFrameId = requestAnimationFrame(animate);
         };
 
         animationFrameId = requestAnimationFrame(animate);
