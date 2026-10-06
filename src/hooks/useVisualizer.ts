@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { THEMES } from '../constants/themes';
@@ -1044,9 +1044,9 @@ export const useVisualizer = ({
                         const baseIdx = laser.idx * SEGMENTS * 2 * 3;
                         for (let j = 0; j < SEGMENTS * 2 * 3; j++) cPos[baseIdx + j] = 0;
                         // Scale instance to zero (hide it)
-                        _laserScl.set(0.001, 1, 0.001);
                         instancedMesh.getMatrixAt(laser.idx, _laserMat4);
-                        _laserMat4.decompose(_laserPos, _laserQuat, new THREE.Vector3());
+                        _laserMat4.decompose(_laserPos, _laserQuat, _laserScl);
+                        _laserScl.set(0.001, 1, 0.001);
                         _laserMat4.compose(_laserPos, _laserQuat, _laserScl);
                         instancedMesh.setMatrixAt(laser.idx, _laserMat4);
                         matricesNeedUpdate = true;
