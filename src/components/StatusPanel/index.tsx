@@ -73,6 +73,9 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({
     if (audioStatus.includes('ERROR') || audioStatus.includes('DENIED')) statusColor = 'bg-red-500';
     else if (isPlaying) statusColor = 'bg-green-500';
 
+    const displayTitle = activeStation ? activeStation.name : 'Data Terminal';
+    const showSongInfo = Boolean(currentSong && activeStation && isPlaying);
+
     return (
         <div className="absolute top-4 left-4 md:top-8 md:left-8 z-20 pointer-events-none select-none flex flex-col gap-4 font-mono">
             <div className="absolute inset-0 bg-[linear-gradient(transparent_50%,rgba(0,0,0,0.25)_50%)] bg-[length:100%_4px] pointer-events-none opacity-50 mix-blend-overlay" />
@@ -90,15 +93,15 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({
                     </p>
                     <h1 className="text-xl md:text-2xl font-light tracking-[0.3em] text-white/90 uppercase border-b border-white/10 pb-2 mb-2 w-48 md:w-64 overflow-hidden text-ellipsis whitespace-nowrap"
                         style={{ textShadow: `0 0 10px ${themeColorStr}40` }}
-                        title={activeStation ? activeStation.name : 'Data Terminal'}
+                        title={displayTitle}
                     >
-                        {activeStation ? activeStation.name : 'Data Terminal'}
+                        {displayTitle}
                     </h1>
 
-                    {currentSong && activeStation && isPlaying && (
+                    {showSongInfo && (
                         <div className="flex flex-col mb-3 max-w-48 md:max-w-64 border-l-2 pl-3 py-1 bg-white/[0.02]" style={{ borderColor: themeColorStr }}>
-                            <p className="text-[11px] md:text-xs text-white/90 font-bold truncate tracking-widest uppercase" title={currentSong.title}>{currentSong.title}</p>
-                            <p className="text-[9px] text-white/50 truncate tracking-[0.2em] uppercase mt-0.5" title={currentSong.artist}>{currentSong.artist}</p>
+                            <p className="text-[11px] md:text-xs text-white/90 font-bold truncate tracking-widest uppercase" title={currentSong!.title}>{currentSong!.title}</p>
+                            <p className="text-[9px] text-white/50 truncate tracking-[0.2em] uppercase mt-0.5" title={currentSong!.artist}>{currentSong!.artist}</p>
                         </div>
                     )}
 
