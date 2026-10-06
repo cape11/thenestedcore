@@ -1017,7 +1017,7 @@ export const useVisualizer = ({
             });
 
             // ── Lasers ─────────────────────────────────────────────────────
-            if ((presetVars.lasersEnabled ?? 1) === 1) {
+            if ((presetVars as any).lasersEnabled !== 0) {
                 const laserIntensity = Math.max(0, (sBass * br - 0.55) * 2.5);
 
                 if (laserIntensity > 0.05 && Math.random() > 0.7) {
@@ -1364,6 +1364,8 @@ export const useVisualizer = ({
 
                 // FIX: use addUpdateRange instead of deprecated updateRange property
                 const activeRange = limit * 6;
+                (particles as any).geometry.attributes.position.clearUpdateRanges();
+                (particles as any).geometry.attributes.color.clearUpdateRanges();
                 (particles as any).geometry.attributes.position.addUpdateRange(0, activeRange);
                 (particles as any).geometry.attributes.color.addUpdateRange(0, activeRange);
                 (particles as any).geometry.attributes.position.needsUpdate = true;
