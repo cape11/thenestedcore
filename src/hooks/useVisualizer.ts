@@ -917,7 +917,14 @@ export const useVisualizer = ({
 
             // Palette lerp
             if (currentPaletteRef.current.length !== activeTheme.palette.length) {
-                currentPaletteRef.current = activeTheme.palette.map(hex => new THREE.Color(hex));
+                const targetLen = activeTheme.palette.length;
+                while (currentPaletteRef.current.length < targetLen) {
+                    currentPaletteRef.current.push(new THREE.Color());
+                }
+                currentPaletteRef.current.length = targetLen;
+                for (let i = 0; i < targetLen; i++) {
+                    currentPaletteRef.current[i].setHex(activeTheme.palette[i]);
+                }
             } else {
                 activeTheme.palette.forEach((hex, idx) => {
                     _targetColor.setHex(hex);
