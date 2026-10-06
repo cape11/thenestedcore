@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { THEMES } from '../constants/themes';
@@ -917,7 +917,19 @@ export const useVisualizer = ({
 
             // Palette lerp
             if (currentPaletteRef.current.length !== activeTheme.palette.length) {
-                currentPaletteRef.current = activeTheme.palette.map(hex => new THREE.Color(hex));
+                const currentPalette = currentPaletteRef.current;
+                const targetPalette = activeTheme.palette;
+                const oldLength = currentPalette.length;
+                if (oldLength > targetPalette.length) {
+                    currentPalette.length = targetPalette.length;
+                }
+                for (let j = 0; j < targetPalette.length; j++) {
+                    if (j < oldLength) {
+                        currentPalette[j].setHex(targetPalette[j]);
+                    } else {
+                        currentPalette.push(new THREE.Color(targetPalette[j]));
+                    }
+                }
             } else {
                 activeTheme.palette.forEach((hex, idx) => {
                     _targetColor.setHex(hex);
