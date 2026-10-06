@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { THEMES } from '../constants/themes';
@@ -29,6 +29,23 @@ const FPS_WINDOW_SIZE          = 90;    // frames tracked for FPS rolling averag
 const FPS_DEGRADE_THRESHOLD    = 45;
 const FPS_UPGRADE_THRESHOLD    = 58;    // must sustain this before upgrading
 const FPS_UPGRADE_PATIENCE     = 180;   // frames of sustained good FPS required
+
+// ---------------------------------------------------------------------------
+// Secure Random Generator (Performance-optimized pool)
+// ---------------------------------------------------------------------------
+
+const RANDOM_POOL_SIZE = 4096;
+const randomPool = new Uint32Array(RANDOM_POOL_SIZE);
+let randomPoolIdx = RANDOM_POOL_SIZE; // Force initial refill
+
+export const secureRandom = (): number => {
+    if (randomPoolIdx >= RANDOM_POOL_SIZE) {
+        crypto.getRandomValues(randomPool);
+        randomPoolIdx = 0;
+    }
+    // Return float in [0, 1) by dividing by max Uint32 + 1
+    return randomPool[randomPoolIdx++] / 4294967296;
+};
 
 // ---------------------------------------------------------------------------
 // Noise helpers (renamed to avoid implying true Simplex behaviour)
@@ -349,13 +366,13 @@ function initBackground(scene: THREE.Scene, _theme: typeof THEMES[keyof typeof T
     const _starColor = new THREE.Color();
 
     for (let i = 0; i < starsCount; i++) {
-        const r     = 40 + Math.random() * 150;
-        const theta = 2 * Math.PI * Math.random();
-        const phi   = Math.acos(2 * Math.random() - 1);
+        const r     = 40 + secureRandom() * 150;
+        const theta = 2 * Math.PI * secureRandom();
+        const phi   = Math.acos(2 * secureRandom() - 1);
         starsPos[i*3]   = r * Math.sin(phi) * Math.cos(theta);
         starsPos[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
         starsPos[i*3+2] = r * Math.cos(phi);
-        _starColor.setHSL(0.55 + Math.random() * 0.1, 0.8, 0.5 + Math.random() * 0.5);
+        _starColor.setHSL(0.55 + secureRandom() * 0.1, 0.8, 0.5 + secureRandom() * 0.5);
         starsColor[i*3] = _starColor.r; starsColor[i*3+1] = _starColor.g; starsColor[i*3+2] = _starColor.b;
     }
     starsGeo.setAttribute('position', new THREE.BufferAttribute(starsPos,   3));
@@ -383,16 +400,16 @@ function initBackground(scene: THREE.Scene, _theme: typeof THEMES[keyof typeof T
     for (let i = 0; i < 8; i++) {
         const mat = new THREE.SpriteMaterial({
             map: nebulaTex, color: 0xffffff, transparent: true,
-            opacity: 0.05 + Math.random() * 0.1,
+            opacity: 0.05 + secureRandom() * 0.1,
             blending: THREE.AdditiveBlending, depthWrite: false,
         });
         const sprite = new THREE.Sprite(mat);
-        const size   = 60 + Math.random() * 80;
+        const size   = 60 + secureRandom() * 80;
         sprite.scale.set(size, size, 1);
         sprite.position.set(
-            (Math.random() - 0.5) * 120,
-            (Math.random() - 0.5) * 80,
-            -40 - Math.random() * 40,
+            (secureRandom() - 0.5) * 120,
+            (secureRandom() - 0.5) * 80,
+            -40 - secureRandom() * 40,
         );
         scene.add(sprite);
         nebulaSprites.push({ mesh: sprite, baseOpacity: mat.opacity });
@@ -1020,10 +1037,10 @@ export const useVisualizer = ({
             if ((presetVars.lasersEnabled ?? 1) === 1) {
                 const laserIntensity = Math.max(0, (sBass * br - 0.55) * 2.5);
 
-                if (laserIntensity > 0.05 && Math.random() > 0.7) {
-                    const numToTrigger = Math.floor(Math.random() * 3) + 1;
+                if (laserIntensity > 0.05 && secureRandom() > 0.7) {
+                    const numToTrigger = Math.floor(secureRandom() * 3) + 1;
                     for (let i = 0; i < numToTrigger; i++) {
-                        const rIdx = Math.floor(Math.random() * laserConnectors.length);
+                        const rIdx = Math.floor(secureRandom() * laserConnectors.length);
                         if (!laserConnectors[rIdx].active) {
                             laserConnectors[rIdx].active = true;
                             laserConnectors[rIdx].life   = 1.0;
@@ -1186,14 +1203,14 @@ export const useVisualizer = ({
                     if (life[i] <= 0) {
                         if (spawned < maxSpawn) {
                             spawned++;
-                            life[i] = (1.2 + Math.random() * 1.6) * pLifeMult;
+                            life[i] = (1.2 + secureRandom() * 1.6) * pLifeMult;
 
-                            const fIdx = Math.floor(Math.random() * numFaces);
+                            const fIdx = Math.floor(secureRandom() * numFaces);
                             const f3   = fIdx * 3;
                             const f9   = fIdx * 9;
                             const fnx  = worldFaceNormalsFlat[f3],   fny = worldFaceNormalsFlat[f3+1], fnz = worldFaceNormalsFlat[f3+2];
 
-                            let u = Math.random(), v = Math.random();
+                            let u = secureRandom(), v = secureRandom();
                             if (u + v > 1) { u = 1 - u; v = 1 - v; }
                             const w = 1 - u - v;
 
@@ -1204,7 +1221,7 @@ export const useVisualizer = ({
                                 u*faceRawVerts[f9+2] + v*faceRawVerts[f9+5] + w*faceRawVerts[f9+8],
                             ).multiplyScalar(currentScale).applyEuler(coreGroup.rotation).add(coreGroup.position);
 
-                            const off = 0.02 + Math.random() * 0.06;
+                            const off = 0.02 + secureRandom() * 0.06;
                             positions[i6]   = _spawnPt.x + fnx * off;
                             positions[i6+1] = _spawnPt.y + fny * off;
                             positions[i6+2] = _spawnPt.z + fnz * off;
@@ -1214,14 +1231,14 @@ export const useVisualizer = ({
 
                             const tx = fnz, ty = -fnx, tz = fny;
                             const tl = Math.sqrt(tx*tx + ty*ty + tz*tz) + 0.001;
-                            const angle = Math.random() * Math.PI * 2;
+                            const angle = secureRandom() * Math.PI * 2;
                             const cos = Math.cos(angle), sin = Math.sin(angle);
                             const d   = (tx/tl)*fnx + (ty/tl)*fny + (tz/tl)*fnz;
                             const rtx = (tx/tl)*cos + (fny*(tz/tl) - fnz*(ty/tl))*sin + fnx*d*(1-cos);
                             const rty = (ty/tl)*cos + (fnz*(tx/tl) - fnx*(tz/tl))*sin + fny*d*(1-cos);
                             const rtz = (tz/tl)*cos + (fnx*(ty/tl) - fny*(tx/tl))*sin + fnz*d*(1-cos);
 
-                            const spd = (0.005 + Math.random() * 0.01) * (1.0 + sBass * br) * pSpeedMult;
+                            const spd = (0.005 + secureRandom() * 0.01) * (1.0 + sBass * br) * pSpeedMult;
                             vels[i3] = rtx * spd; vels[i3+1] = rty * spd; vels[i3+2] = rtz * spd;
 
                         } else {
@@ -1281,7 +1298,7 @@ export const useVisualizer = ({
 
                     if (sTreble > 0.2) {
                         const t2 = sTreble * 0.0004 * pSpeedMult;
-                        const rx = Math.random()-0.5, ry = Math.random()-0.5, rz = Math.random()-0.5;
+                        const rx = secureRandom()-0.5, ry = secureRandom()-0.5, rz = secureRandom()-0.5;
                         const rn2 = rx*nx + ry*ny + rz*nz;
                         vx += (rx - nx*rn2) * t2; vy += (ry - ny*rn2) * t2; vz += (rz - nz*rn2) * t2;
                     }
@@ -1291,7 +1308,7 @@ export const useVisualizer = ({
                         let closestSq = Infinity, cvx = 0, cvy = 0, cvz = 0;
                         const sampleCount = 4;
                         for (let s = 0; s < sampleCount; s++) {
-                            const j  = Math.floor(Math.random() * icoVertices.length);
+                            const j  = Math.floor(secureRandom() * icoVertices.length);
                             const j3 = j * 3;
                             const ddx = flatVerts[j3]-px, ddy = flatVerts[j3+1]-py, ddz = flatVerts[j3+2]-pz;
                             const dSq = ddx*ddx + ddy*ddy + ddz*ddz;
