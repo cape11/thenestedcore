@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import React from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { THEMES } from '../constants/themes';
@@ -286,8 +287,17 @@ interface LightObjects {
     blueFill2:    THREE.PointLight;
 }
 
+interface ParticleUserData {
+    velocities: Float32Array;
+    life:       Float32Array;
+    activeMax:  number;
+    trailLen:   number;
+}
+
+type ParticleSystem = THREE.LineSegments<THREE.BufferGeometry, THREE.LineBasicMaterial> & { userData: ParticleUserData };
+
 interface ParticleObjects {
-    particles:    THREE.Points;
+    particles:    ParticleSystem;
     dispose:      () => void;
 }
 
@@ -691,7 +701,7 @@ function initParticles(
     const deviceTier    = detectParticleTier();
     const tierOrder     = ['ULTRA_LOW', 'LOW', 'HIGH'] as const;
     const effectiveTier = tierOrder[
-        Math.min(tierOrder.indexOf(deviceTier), tierOrder.indexOf(quality as any))
+        Math.min(tierOrder.indexOf(deviceTier), tierOrder.indexOf(quality))
         ] ?? 'LOW';
 
     const ACTIVE_MAX  = PARTICLE_TIERS[effectiveTier];
@@ -718,13 +728,13 @@ function initParticles(
         blending: THREE.AdditiveBlending, depthWrite: false,
     });
 
-    const particles = new THREE.LineSegments(pGeo, pMat);
+    const particles = new THREE.LineSegments(pGeo, pMat) as unknown as ParticleSystem;
     particles.frustumCulled = false;
     particles.userData = { velocities: pVel, life: pLife, activeMax: ACTIVE_MAX, trailLen: TRAIL_LEN };
     scene.add(particles);
 
     return {
-        particles: particles as unknown as THREE.Points,
+        particles,
         dispose: () => { pGeo.dispose(); pMat.dispose(); },
     };
 }
@@ -873,8 +883,8 @@ export const useVisualizer = ({
         let currentThemeKey  = themeRef.current.name;
         let heartbeat        = 1.0;
         let prevLimit        = qualityRef.current === 'ULTRA_LOW'
-            ? Math.floor((particles as any).userData.activeMax * 0.5)
-            : (particles as any).userData.activeMax;
+            ? Math.floor(particles.userData.activeMax * 0.5)
+            : particles.userData.activeMax;
         let lastTime         = performance.now();
         let animationFrameId = 0;
 
@@ -1121,12 +1131,12 @@ export const useVisualizer = ({
 
             // ── Particle update ────────────────────────────────────────────
             {
-                const positions = (particles as any).geometry.attributes.position.array as Float32Array;
-                const colors    = (particles as any).geometry.attributes.color.array    as Float32Array;
-                const vels      = (particles as any).userData.velocities as Float32Array;
-                const life      = (particles as any).userData.life       as Float32Array;
-                const activeMax = (particles as any).userData.activeMax  as number;
-                const trailLen  = (particles as any).userData.trailLen   as number;
+                const positions = (particles.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array;
+                const colors    = (particles.geometry.attributes.color as THREE.BufferAttribute).array    as Float32Array;
+                const vels      = particles.userData.velocities;
+                const life      = particles.userData.life;
+                const activeMax = particles.userData.activeMax;
+                const trailLen  = particles.userData.trailLen;
 
                 // Glow color — extracted once per frame, no per-particle allocation
                 _glowColor.setHex(activeTheme.glow);
@@ -1158,7 +1168,7 @@ export const useVisualizer = ({
                         positions[i6+3] = positions[i6+4] = positions[i6+5] = 9999;
                     }
                     prevLimit = limit;
-                    (particles as any).geometry.attributes.position.needsUpdate = true;
+                    (particles.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
                 }
 
                 const turbulence = presetVars.turbulence ?? 0.3;
@@ -1364,10 +1374,10 @@ export const useVisualizer = ({
 
                 // FIX: use addUpdateRange instead of deprecated updateRange property
                 const activeRange = limit * 6;
-                (particles as any).geometry.attributes.position.addUpdateRange(0, activeRange);
-                (particles as any).geometry.attributes.color.addUpdateRange(0, activeRange);
-                (particles as any).geometry.attributes.position.needsUpdate = true;
-                (particles as any).geometry.attributes.color.needsUpdate    = true;
+                (particles.geometry.attributes.position as THREE.BufferAttribute).addUpdateRange(0, activeRange);
+                (particles.geometry.attributes.color as THREE.BufferAttribute).addUpdateRange(0, activeRange);
+                (particles.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+                (particles.geometry.attributes.color as THREE.BufferAttribute).needsUpdate    = true;
             }
 
             // ── FPS monitor — bidirectional quality adjustment ──────────────
